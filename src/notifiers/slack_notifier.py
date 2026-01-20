@@ -127,15 +127,28 @@ class SlackNotifier:
                 s_text += f"`{i}` *{rec.stock_name}* {bar} *{rec.score:.0f}점*\n"
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": s_text}})
 
-        # AI 분석 요약 (첫 500자만)
+        # AI 분석 (Slack 블록 제한: 3000자)
         if ai_analysis:
             blocks.append({"type": "divider"})
-            # AI 분석에서 핵심만 추출 (너무 길면 자름)
-            ai_short = ai_analysis[:800] + "..." if len(ai_analysis) > 800 else ai_analysis
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*🤖 AI 분석*\n{ai_short}"}
-            })
+            max_length = 2900  # Slack 블록 텍스트 제한
+
+            if len(ai_analysis) <= max_length:
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*🤖 AI 분석*\n{ai_analysis}"}
+                })
+            else:
+                # 긴 텍스트를 여러 블록으로 분할
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "*🤖 AI 분석*"}
+                })
+                chunks = [ai_analysis[i:i+max_length] for i in range(0, len(ai_analysis), max_length)]
+                for chunk in chunks[:3]:  # 최대 3개 블록
+                    blocks.append({
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": chunk}
+                    })
 
         blocks.append({
             "type": "context",
@@ -890,6 +903,45 @@ class SlackNotifier:
             })
 
         return self.send_message("일일 종합 요약", blocks)
+
+
+    def send_gemini_usage_warning(self, usage_info: dict) -> bool:
+        """
+        Gemini API 사용량 80% 경고 알림
+
+        Args:
+            usage_info: {
+                "count": 현재 사용량,
+                "limit": 일일 한도,
+                "usage_pct": 사용률 (%)
+            }
+        """
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "⚠️ Gemini API 사용량 경고"}
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*일일 무료 한도의 {usage_info['usage_pct']:.0f}%에 도달했습니다*\n\n"
+                           f"• 현재 사용량: *{usage_info['count']:,}회*\n"
+                           f"• 일일 한도: *{usage_info['limit']:,}회*\n"
+                           f"• 남은 횟수: *{usage_info['limit'] - usage_info['count']:,}회*"
+                }
+            },
+            {"type": "divider"},
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": "_한도 초과 시 AI 분석 기능이 일시 중단됩니다. 내일 자정에 리셋됩니다._"}
+                ]
+            }
+        ]
+
+        return self.send_message("Gemini API 사용량 경고", blocks)
 
 
 if __name__ == "__main__":

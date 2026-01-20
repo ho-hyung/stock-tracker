@@ -12,6 +12,12 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 # Gemini API 설정
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
+# Gemini 무료 한도 설정
+GEMINI_FREE_TIER = {
+    "daily_requests": 1500,  # 일일 요청 한도
+    "warning_threshold": 0.8,  # 80% 도달 시 경고
+}
+
 # 알림 조건 설정
 ALERT_CONFIG = {
     # 외국인/기관 연속 매수일 기준

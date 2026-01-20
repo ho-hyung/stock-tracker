@@ -8,11 +8,96 @@
 import os
 import sys
 import json
+from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from config import GEMINI_API_KEY
+from config import GEMINI_API_KEY, GEMINI_FREE_TIER
+
+# 데이터 저장 경로
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+
+
+class GeminiUsageTracker:
+    """Gemini API 사용량 추적"""
+
+    def __init__(self):
+        self.usage_file = os.path.join(DATA_DIR, "gemini_usage.json")
+        self.daily_limit = GEMINI_FREE_TIER.get("daily_requests", 1500)
+        self.warning_threshold = GEMINI_FREE_TIER.get("warning_threshold", 0.8)
+        self._ensure_data_dir()
+        self.usage = self._load_usage()
+
+    def _ensure_data_dir(self):
+        """데이터 디렉토리 생성"""
+        os.makedirs(DATA_DIR, exist_ok=True)
+
+    def _load_usage(self) -> dict:
+        """사용량 데이터 로드"""
+        if os.path.exists(self.usage_file):
+            try:
+                with open(self.usage_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except:
+                return {"date": "", "count": 0, "warning_sent": False}
+        return {"date": "", "count": 0, "warning_sent": False}
+
+    def _save_usage(self):
+        """사용량 데이터 저장"""
+        with open(self.usage_file, "w", encoding="utf-8") as f:
+            json.dump(self.usage, f, ensure_ascii=False, indent=2)
+
+    def _reset_if_new_day(self):
+        """날짜가 바뀌면 카운트 리셋"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self.usage.get("date") != today:
+            self.usage = {"date": today, "count": 0, "warning_sent": False}
+            self._save_usage()
+
+    def increment(self) -> dict:
+        """
+        API 호출 카운트 증가
+
+        Returns:
+            dict: {
+                "count": 현재 사용량,
+                "limit": 일일 한도,
+                "usage_pct": 사용률 (%),
+                "should_warn": 경고 필요 여부 (80% 도달 시 True, 한번만)
+            }
+        """
+        self._reset_if_new_day()
+        self.usage["count"] += 1
+
+        usage_pct = (self.usage["count"] / self.daily_limit) * 100
+        should_warn = False
+
+        # 80% 도달 시 경고 (한 번만)
+        if usage_pct >= self.warning_threshold * 100 and not self.usage.get("warning_sent"):
+            should_warn = True
+            self.usage["warning_sent"] = True
+
+        self._save_usage()
+
+        return {
+            "count": self.usage["count"],
+            "limit": self.daily_limit,
+            "usage_pct": round(usage_pct, 1),
+            "should_warn": should_warn
+        }
+
+    def get_status(self) -> dict:
+        """현재 사용량 상태 조회"""
+        self._reset_if_new_day()
+        usage_pct = (self.usage["count"] / self.daily_limit) * 100
+        return {
+            "date": self.usage.get("date"),
+            "count": self.usage["count"],
+            "limit": self.daily_limit,
+            "usage_pct": round(usage_pct, 1),
+            "remaining": self.daily_limit - self.usage["count"]
+        }
 
 
 @dataclass
@@ -31,6 +116,8 @@ class StockRecommender:
 
     def __init__(self):
         self.gemini_api_key = GEMINI_API_KEY
+        self.usage_tracker = GeminiUsageTracker()
+        self.last_usage_info = None  # 마지막 API 호출 결과
 
     def get_rule_based_recommendations(
         self,
@@ -302,12 +389,24 @@ class StockRecommender:
 """
 
             response = model.generate_content(prompt)
+
+            # 사용량 추적
+            self.last_usage_info = self.usage_tracker.increment()
+
             return response.text
 
         except ImportError:
             return "Gemini API 사용을 위해 google-generativeai 패키지를 설치해주세요: pip install google-generativeai"
         except Exception as e:
             return f"AI 분석 중 오류 발생: {str(e)}"
+
+    def get_usage_status(self) -> dict:
+        """Gemini API 사용량 상태 조회"""
+        return self.usage_tracker.get_status()
+
+    def should_send_usage_warning(self) -> bool:
+        """사용량 경고를 보내야 하는지 확인"""
+        return self.last_usage_info and self.last_usage_info.get("should_warn", False)
 
     def get_all_recommendations(
         self,

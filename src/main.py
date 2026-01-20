@@ -141,10 +141,19 @@ class StockTracker:
                 print(f"  - 수급 일치: {[r.stock_name for r in rule_based[:3]]}")
                 print(f"  - 종합점수 TOP: {[r.stock_name for r in score_based[:3]]}")
                 print(f"  - AI 분석: {'있음' if ai_analysis else 'GEMINI_API_KEY 필요'}")
+                # 사용량 상태 출력
+                usage = self.recommender.get_usage_status()
+                print(f"  - Gemini 사용량: {usage['count']}/{usage['limit']} ({usage['usage_pct']}%)")
             elif self.notifier:
                 # 통합 추천 알림 발송
                 self.notifier.send_unified_recommendations(rule_based, score_based, ai_analysis)
                 print("  - AI 추천 종목 발송 완료 (1개 메시지)")
+
+                # Gemini 사용량 80% 도달 시 경고 발송
+                if self.recommender.should_send_usage_warning():
+                    usage = self.recommender.last_usage_info
+                    self.notifier.send_gemini_usage_warning(usage)
+                    print(f"  - ⚠️ Gemini 사용량 경고 발송 ({usage['usage_pct']}% 도달)")
 
                 # 추천 성과 추적을 위해 저장
                 self.performance_tracker.save_recommendations(rule_based, score_based)

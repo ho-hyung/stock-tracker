@@ -63,7 +63,7 @@ class StockTracker:
         self._init_components()
 
         # 1. 데이터 수집
-        print("\n[1/4] 데이터 수집 중...")
+        print("\n[1/3] 데이터 수집 중...")
 
         # KRX 데이터
         print("  - KRX 외국인/기관 매매동향 수집...")
@@ -86,35 +86,47 @@ class StockTracker:
         else:
             print("  - DART API 키 미설정으로 공시 데이터 스킵")
 
-        # 2. 신호 분석
-        print("\n[2/4] 신호 분석 중...")
-        signals = self.analyzer.analyze_all(
-            foreigner_data,
-            institution_data,
-            major_shareholder_data,
-            executive_data
-        )
-        print(f"  생성된 알림 신호: {len(signals)}건")
-
-        # 3. 알림 발송
-        print("\n[3/4] 알림 발송 중...")
+        # 2. 요약 알림 발송
+        print("\n[2/3] 요약 알림 발송 중...")
         if self.dry_run:
             print("  [DRY RUN] 실제 발송하지 않음")
-            for signal in signals:
-                print(f"  - [{signal.priority}] {signal.signal_type}: {signal.reason}")
+            if foreigner_data:
+                print(f"  - 외국인 순매수 TOP 10: {[d['stock_name'] for d in foreigner_data[:3]]}...")
+            if institution_data:
+                print(f"  - 기관 순매수 TOP 10: {[d['stock_name'] for d in institution_data[:3]]}...")
+            if major_shareholder_data:
+                print(f"  - 대량보유 공시: {len(major_shareholder_data)}건")
+            if executive_data:
+                print(f"  - 임원/주요주주 거래: {len(executive_data)}건")
         elif self.notifier:
             sent_count = 0
-            for signal in signals:
-                success = self._send_signal(signal)
-                if success:
+            # 외국인 순매수 TOP 10
+            if foreigner_data:
+                if self.notifier.send_foreigner_summary(foreigner_data, top_n=10):
                     sent_count += 1
-            print(f"  발송 완료: {sent_count}/{len(signals)}건")
+                    print("  - 외국인 순매수 TOP 10 발송 완료")
+            # 기관 순매수 TOP 10
+            if institution_data:
+                if self.notifier.send_institution_summary(institution_data, top_n=10):
+                    sent_count += 1
+                    print("  - 기관 순매수 TOP 10 발송 완료")
+            # 대량보유 공시
+            if major_shareholder_data:
+                if self.notifier.send_major_shareholder_summary(major_shareholder_data, top_n=10):
+                    sent_count += 1
+                    print("  - 대량보유 공시 요약 발송 완료")
+            # 임원/주요주주 거래
+            if executive_data:
+                if self.notifier.send_executive_trading_summary(executive_data, top_n=10):
+                    sent_count += 1
+                    print("  - 임원/주요주주 거래 요약 발송 완료")
+            print(f"  발송 완료: {sent_count}개 요약 메시지")
         else:
             print("  [SKIP] Slack 알림기 미설정")
 
-        # 4. 일일 요약 (옵션)
+        # 3. 일일 요약 (옵션)
         if send_summary:
-            print("\n[4/4] 일일 요약 발송 중...")
+            print("\n[3/3] 일일 요약 발송 중...")
             summary = self.analyzer.get_daily_summary(
                 foreigner_data,
                 institution_data,
@@ -129,24 +141,12 @@ class StockTracker:
                 self.notifier.send_daily_summary(summary)
                 print("  일일 요약 발송 완료")
         else:
-            print("\n[4/4] 일일 요약 스킵")
+            print("\n[3/3] 일일 요약 스킵")
 
         # 오래된 알림 기록 정리
         self.analyzer.clear_old_alerts(days=7)
 
         print(f"\n[완료] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    def _send_signal(self, signal) -> bool:
-        """신호에 따른 알림 발송"""
-        if signal.signal_type == "foreigner":
-            return self.notifier.send_foreigner_alert(signal.data)
-        elif signal.signal_type == "institution":
-            return self.notifier.send_institution_alert(signal.data)
-        elif signal.signal_type == "major_shareholder":
-            return self.notifier.send_major_shareholder_alert(signal.data)
-        elif signal.signal_type == "executive_trading":
-            return self.notifier.send_executive_trading_alert(signal.data)
-        return False
 
     def _is_weekday(self) -> bool:
         """평일 여부 확인 (월~금)"""

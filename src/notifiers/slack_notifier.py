@@ -905,6 +905,83 @@ class SlackNotifier:
         return self.send_message("일일 종합 요약", blocks)
 
 
+    def send_trading_signals(self, recommendations: list, risk_levels: dict) -> bool:
+        """
+        손절/익절 기준이 포함된 매매 시그널 발송
+
+        Args:
+            recommendations: 추천 종목 리스트
+            risk_levels: {stock_code: RiskLevel} 딕셔너리
+        """
+        if not recommendations:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "🎯 매매 시그널 (손절/익절 포함)"}
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"🕐 {today} | ATR 기반 동적 기준"}]
+            },
+            {"type": "divider"},
+        ]
+
+        for i, rec in enumerate(recommendations[:5], 1):
+            risk = risk_levels.get(rec.stock_code)
+
+            if risk:
+                # 변동성 이모지
+                vol_emoji = {
+                    "낮음": "🟢",
+                    "보통": "🟡",
+                    "높음": "🟠",
+                    "매우높음": "🔴"
+                }.get(risk.volatility_grade, "⚪")
+
+                signal_text = (
+                    f"*{i}. {rec.stock_name}* `{rec.stock_code}`\n"
+                    f"현재가 *{risk.current_price:,.0f}원* {vol_emoji} 변동성 {risk.volatility_grade}\n"
+                    f"```\n"
+                    f"🛑 손절: {risk.stop_loss_price:,.0f}원 (-{risk.stop_loss_pct}%)\n"
+                    f"✅ 1차 익절: {risk.take_profit_1_price:,.0f}원 (+{risk.take_profit_1_pct}%)\n"
+                    f"🎯 2차 익절: {risk.take_profit_2_price:,.0f}원 (+{risk.take_profit_2_pct}%)\n"
+                    f"📊 R/R 비율: 1:{risk.risk_reward_ratio}\n"
+                    f"```"
+                )
+            else:
+                signal_text = (
+                    f"*{i}. {rec.stock_name}* `{rec.stock_code}`\n"
+                    f"_가격 데이터 조회 실패_"
+                )
+
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": signal_text}
+            })
+
+        # 안내 문구
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "context",
+            "elements": [{
+                "type": "mrkdwn",
+                "text": (
+                    "_💡 ATR(평균진폭) 기반 동적 손절/익절 | "
+                    "손절 1.5ATR, 1차익절 2ATR, 2차익절 3.5ATR_"
+                )
+            }]
+        })
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "_⚠️ 투자 판단의 책임은 본인에게 있습니다_"}]
+        })
+
+        return self.send_message("매매 시그널", blocks)
+
     def send_backtest_report(self, summary) -> bool:
         """
         백테스트 결과 리포트 발송

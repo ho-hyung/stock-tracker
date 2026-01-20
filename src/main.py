@@ -18,6 +18,7 @@ from src.analyzers.stock_recommender import StockRecommender
 from src.analyzers.data_analyzer import DataAnalyzer
 from src.analyzers.performance_tracker import PerformanceTracker
 from src.analyzers.backtester import Backtester
+from src.analyzers.risk_manager import RiskManager
 from src.notifiers.slack_notifier import SlackNotifier
 
 
@@ -32,6 +33,7 @@ class StockTracker:
         self.recommender = None
         self.data_analyzer = None
         self.performance_tracker = None
+        self.risk_manager = None
         self.notifier = None
 
     def _init_components(self):
@@ -50,6 +52,9 @@ class StockTracker:
 
         if self.performance_tracker is None:
             self.performance_tracker = PerformanceTracker()
+
+        if self.risk_manager is None:
+            self.risk_manager = RiskManager()
 
         # DART와 Slack은 API 키가 필요하므로 별도 처리
         try:
@@ -155,6 +160,20 @@ class StockTracker:
                     usage = self.recommender.last_usage_info
                     self.notifier.send_gemini_usage_warning(usage)
                     print(f"  - ⚠️ Gemini 사용량 경고 발송 ({usage['usage_pct']}% 도달)")
+
+                # 손절/익절 기준 계산 및 발송
+                top_recommendations = (rule_based + score_based)[:5]
+                if top_recommendations:
+                    print("  - 손절/익절 기준 계산 중...")
+                    risk_levels = {}
+                    for rec in top_recommendations:
+                        risk = self.risk_manager.calculate_risk_levels(rec.stock_code, rec.stock_name)
+                        if risk:
+                            risk_levels[rec.stock_code] = risk
+
+                    if risk_levels:
+                        self.notifier.send_trading_signals(top_recommendations, risk_levels)
+                        print("  - 매매 시그널 발송 완료 (손절/익절 포함)")
 
                 # 추천 성과 추적을 위해 저장
                 self.performance_tracker.save_recommendations(rule_based, score_based)

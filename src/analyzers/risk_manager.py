@@ -3,6 +3,7 @@
 - ATR 기반 동적 손절/익절 계산
 - 변동성 분석
 - 포지션 사이징 제안
+- 네이버 금융 실시간 현재가 연동
 """
 
 import os
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 import FinanceDataReader as fdr
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+from src.utils.price_fetcher import get_realtime_price
 
 
 @dataclass
@@ -148,19 +151,25 @@ class RiskManager:
         Args:
             stock_code: 종목코드
             stock_name: 종목명
-            current_price: 현재가 (없으면 조회)
+            current_price: 현재가 (없으면 네이버에서 실시간 조회)
 
         Returns:
             RiskLevel 객체 또는 None
         """
-        # 가격 데이터 조회
+        # 가격 데이터 조회 (ATR 계산용)
         price_data = self._get_price_data(stock_code, days=30)
         if not price_data:
             return None
 
-        # 현재가
+        # 현재가: 네이버 금융에서 실시간 조회
         if current_price is None:
-            current_price = price_data[-1]['close']
+            realtime = get_realtime_price(stock_code)
+            if realtime:
+                current_price = realtime.current_price
+                stock_name = realtime.stock_name  # 정확한 종목명으로 업데이트
+            else:
+                # 실시간 조회 실패 시 최근 종가 사용
+                current_price = price_data[-1]['close']
 
         # ATR 계산
         atr = self._calculate_atr(price_data, period=14)

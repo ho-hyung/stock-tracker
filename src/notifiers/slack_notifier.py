@@ -61,7 +61,7 @@ class SlackNotifier:
             for i, item in enumerate(foreigner_data[:5], 1):
                 amt = item["net_buy_amount"] / 100_000_000
                 change = item.get("change_rate", "0")
-                emoji = "🔴" if str(change).startswith("-") else "🟢"
+                emoji = "📉" if str(change).startswith("-") else "📈"
                 f_text += f"`{i}` *{item['stock_name']}* {amt:,.0f}억 {emoji}{change}%\n"
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f_text}})
 
@@ -71,7 +71,7 @@ class SlackNotifier:
             for i, item in enumerate(institution_data[:5], 1):
                 amt = item["net_buy_amount"] / 100_000_000
                 change = item.get("change_rate", "0")
-                emoji = "🔴" if str(change).startswith("-") else "🟢"
+                emoji = "📉" if str(change).startswith("-") else "📈"
                 i_text += f"`{i}` *{item['stock_name']}* {amt:,.0f}억 {emoji}{change}%\n"
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": i_text}})
 

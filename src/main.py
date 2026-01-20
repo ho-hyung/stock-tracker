@@ -16,6 +16,7 @@ from src.collectors.krx_collector import KrxCollector
 from src.analyzers.signal_analyzer import SignalAnalyzer
 from src.analyzers.stock_recommender import StockRecommender
 from src.analyzers.data_analyzer import DataAnalyzer
+from src.analyzers.performance_tracker import PerformanceTracker
 from src.notifiers.slack_notifier import SlackNotifier
 
 
@@ -29,6 +30,7 @@ class StockTracker:
         self.analyzer = None
         self.recommender = None
         self.data_analyzer = None
+        self.performance_tracker = None
         self.notifier = None
 
     def _init_components(self):
@@ -44,6 +46,9 @@ class StockTracker:
 
         if self.data_analyzer is None:
             self.data_analyzer = DataAnalyzer()
+
+        if self.performance_tracker is None:
+            self.performance_tracker = PerformanceTracker()
 
         # DART와 Slack은 API 키가 필요하므로 별도 처리
         try:
@@ -184,7 +189,12 @@ class StockTracker:
                     print("  - AI 분석 추천 발송 완료")
                 else:
                     print("  - AI 분석 스킵 (GEMINI_API_KEY 미설정)")
+
+                # 추천 성과 추적을 위해 저장
+                self.performance_tracker.save_recommendations(rule_based, score_based)
         else:
+            rule_based = []
+            score_based = []
             print("\n[3/5] 추천 스킵")
 
         # 4. 데이터 분석 강화 (연속 매수, 모멘텀, 섹터 흐름)
@@ -213,22 +223,37 @@ class StockTracker:
                 self.notifier.send_sector_flow_alert(analysis_results['sector_flow'])
                 print("  - 섹터 자금 흐름 발송 완료")
 
-        # 5. 일일 요약 (옵션)
+        # 5. 일일 요약 및 성과 리포트 (옵션)
         if send_summary:
-            print("\n[5/5] 일일 요약 발송 중...")
+            print("\n[5/5] 일일 요약 및 성과 리포트 발송 중...")
             summary = self.analyzer.get_daily_summary(
                 foreigner_data,
                 institution_data,
                 major_shareholder_data,
                 executive_data
             )
+
+            # 7일간 추천 성과 리포트
+            performance_report = self.performance_tracker.get_performance_report(days=7)
+
             if self.dry_run:
                 print("  [DRY RUN] 요약 데이터:")
                 print(f"    외국인 TOP: {[d['stock_name'] for d in summary['foreigner_top'][:3]]}")
                 print(f"    기관 TOP: {[d['stock_name'] for d in summary['institution_top'][:3]]}")
+                print(f"  [DRY RUN] 성과 리포트:")
+                print(f"    추천 수: {performance_report['total_recommendations']}건")
+                print(f"    평균 수익률: {performance_report['avg_return']}%")
+                print(f"    승률: {performance_report['win_rate']}%")
             elif self.notifier:
                 self.notifier.send_daily_summary(summary)
-                print("  일일 요약 발송 완료")
+                print("  - 일일 요약 발송 완료")
+
+                # 성과 리포트 발송 (추천 기록이 있을 때만)
+                if performance_report['total_recommendations'] > 0:
+                    self.notifier.send_performance_report(performance_report)
+                    print("  - 추천 성과 리포트 발송 완료")
+                else:
+                    print("  - 성과 리포트 스킵 (추천 기록 없음)")
         else:
             print("\n[5/5] 일일 요약 스킵")
 

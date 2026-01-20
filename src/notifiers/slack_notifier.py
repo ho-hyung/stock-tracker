@@ -488,6 +488,109 @@ class SlackNotifier:
 
         return self.send_message("섹터별 자금 흐름", blocks)
 
+    def send_performance_report(self, report: dict) -> bool:
+        """추천 성과 리포트 발송"""
+        if report.get("total_recommendations", 0) == 0:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        period = report.get("period_days", 7)
+
+        # 평균 수익률에 따른 이모지
+        avg_return = report.get("avg_return", 0)
+        if avg_return >= 3:
+            emoji = "🚀"
+            status = "대박"
+        elif avg_return >= 1:
+            emoji = "📈"
+            status = "양호"
+        elif avg_return >= 0:
+            emoji = "➡️"
+            status = "보합"
+        else:
+            emoji = "📉"
+            status = "부진"
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"📊 추천 성과 리포트 ({period}일)",
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"📅 {today} | 지난 {period}일간 추천 종목 성과"}
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        # 요약 통계
+        summary_text = f"*{emoji} 전체 성과: {status}*\n\n"
+        summary_text += f"• 추천 종목 수: *{report['total_recommendations']}개*\n"
+        summary_text += f"• 평균 수익률: *{avg_return:+.2f}%*\n"
+        summary_text += f"• 승률 (수익 종목): *{report['win_rate']:.1f}%*"
+
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": summary_text}
+        })
+
+        blocks.append({"type": "divider"})
+
+        # 최고/최저 성과
+        best = report.get("best_performer")
+        worst = report.get("worst_performer")
+
+        if best:
+            best_text = f"*🏆 최고 성과*\n"
+            best_text += f"• {best.stock_name} (`{best.stock_code}`)\n"
+            best_text += f"• 추천가: {best.recommended_price:,.0f}원 → 현재가: {best.current_price:,.0f}원\n"
+            best_text += f"• 수익률: *+{best.return_pct:.2f}%* ({best.days_held}일)"
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": best_text}
+            })
+
+        if worst and worst.return_pct < 0:
+            worst_text = f"*📉 최저 성과*\n"
+            worst_text += f"• {worst.stock_name} (`{worst.stock_code}`)\n"
+            worst_text += f"• 추천가: {worst.recommended_price:,.0f}원 → 현재가: {worst.current_price:,.0f}원\n"
+            worst_text += f"• 수익률: *{worst.return_pct:.2f}%* ({worst.days_held}일)"
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": worst_text}
+            })
+
+        # 전체 결과 (상위 5개만)
+        results = report.get("results", [])
+        if results:
+            blocks.append({"type": "divider"})
+            results_text = "*📋 전체 성과*\n"
+            for i, r in enumerate(results[:5], 1):
+                sign = "+" if r.return_pct >= 0 else ""
+                results_text += f"{i}. {r.stock_name}: *{sign}{r.return_pct:.2f}%*\n"
+
+            if len(results) > 5:
+                results_text += f"_외 {len(results) - 5}개 종목..._"
+
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": results_text}
+            })
+
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": "_⚠️ 과거 성과가 미래 수익을 보장하지 않습니다._"}
+            ]
+        })
+
+        return self.send_message("추천 성과 리포트", blocks)
+
     def send_daily_summary(self, summary: dict) -> bool:
         """일일 종합 요약 알림 발송"""
         today = datetime.now().strftime("%Y-%m-%d")

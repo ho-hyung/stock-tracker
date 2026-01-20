@@ -29,6 +29,247 @@ class SlackNotifier:
         response = requests.post(self.webhook_url, json=payload)
         return response.status_code == 200
 
+    # ========== 통합 알림 메서드 (NEW) ==========
+
+    def send_market_overview(
+        self,
+        foreigner_data: list,
+        institution_data: list,
+        major_shareholder_data: list,
+        executive_data: list
+    ) -> bool:
+        """
+        시장 개요 통합 알림 (외국인/기관/공시 한눈에)
+        """
+        today = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 시장 수급 현황"}
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"🕐 {today}"}]
+            },
+            {"type": "divider"},
+        ]
+
+        # 외국인 TOP 5 (한 줄로 압축)
+        if foreigner_data:
+            f_text = "*🌍 외국인 순매수*\n"
+            for i, item in enumerate(foreigner_data[:5], 1):
+                amt = item["net_buy_amount"] / 100_000_000
+                change = item.get("change_rate", "0")
+                emoji = "🔴" if str(change).startswith("-") else "🟢"
+                f_text += f"`{i}` *{item['stock_name']}* {amt:,.0f}억 {emoji}{change}%\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f_text}})
+
+        # 기관 TOP 5 (한 줄로 압축)
+        if institution_data:
+            i_text = "*🏦 기관 순매수*\n"
+            for i, item in enumerate(institution_data[:5], 1):
+                amt = item["net_buy_amount"] / 100_000_000
+                change = item.get("change_rate", "0")
+                emoji = "🔴" if str(change).startswith("-") else "🟢"
+                i_text += f"`{i}` *{item['stock_name']}* {amt:,.0f}억 {emoji}{change}%\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": i_text}})
+
+        # 공시 요약 (간단히)
+        if major_shareholder_data or executive_data:
+            blocks.append({"type": "divider"})
+            d_text = "*📋 오늘의 공시*\n"
+            if major_shareholder_data:
+                d_text += f"• 대량보유(5%↑): *{len(major_shareholder_data)}건*\n"
+            if executive_data:
+                d_text += f"• 임원거래: *{len(executive_data)}건*"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": d_text}})
+
+        return self.send_message("시장 수급 현황", blocks)
+
+    def send_unified_recommendations(
+        self,
+        rule_based: list,
+        score_based: list,
+        ai_analysis: str = None
+    ) -> bool:
+        """
+        추천 종목 통합 알림 (3가지 추천을 하나로)
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "💡 AI 추천 종목"}
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"📅 {today} | 외국인+기관 수급 기반 분석"}]
+            },
+            {"type": "divider"},
+        ]
+
+        # 규칙 기반 추천 (수급 일치 종목)
+        if rule_based:
+            r_text = "*🎯 수급 일치 종목* (외국인+기관 동시 매수)\n"
+            for rec in rule_based[:3]:
+                r_text += f"• *{rec.stock_name}* `{rec.stock_code}` - {rec.score:.0f}점\n"
+                r_text += f"  └ {', '.join(rec.reasons[:2])}\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": r_text}})
+
+        # 점수 기반 TOP 3
+        if score_based:
+            blocks.append({"type": "divider"})
+            s_text = "*📊 종합점수 TOP 3* (외국인40+기관40+내부자20)\n"
+            for i, rec in enumerate(score_based[:3], 1):
+                bar = "█" * int(rec.score / 10) + "░" * (10 - int(rec.score / 10))
+                s_text += f"`{i}` *{rec.stock_name}* {bar} *{rec.score:.0f}점*\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": s_text}})
+
+        # AI 분석 요약 (첫 500자만)
+        if ai_analysis:
+            blocks.append({"type": "divider"})
+            # AI 분석에서 핵심만 추출 (너무 길면 자름)
+            ai_short = ai_analysis[:800] + "..." if len(ai_analysis) > 800 else ai_analysis
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*🤖 AI 분석*\n{ai_short}"}
+            })
+
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "_⚠️ 투자 판단의 책임은 본인에게 있습니다_"}]
+        })
+
+        return self.send_message("AI 추천 종목", blocks)
+
+    def send_analysis_insights(
+        self,
+        consecutive_data: dict,
+        momentum_stocks: list,
+        sector_flows: list
+    ) -> bool:
+        """
+        분석 인사이트 통합 알림 (연속매수/모멘텀/섹터 한눈에)
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # 표시할 내용이 있는지 확인
+        has_consecutive = (consecutive_data.get("consecutive_foreigner") or
+                          consecutive_data.get("consecutive_institution"))
+        has_momentum = bool(momentum_stocks)
+        has_sector = bool(sector_flows)
+
+        if not (has_consecutive or has_momentum or has_sector):
+            return True
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "🔍 시장 분석 인사이트"}
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"📅 {today}"}]
+            },
+            {"type": "divider"},
+        ]
+
+        # 모멘텀 종목 (순매수 + 상승)
+        if momentum_stocks:
+            m_text = "*🚀 모멘텀 종목* (순매수 + 주가상승)\n"
+            for item in momentum_stocks[:5]:
+                amt = item.net_buy_amount / 100_000_000
+                investor = "외" if item.investor_type == "foreigner" else "기"
+                m_text += f"• *{item.stock_name}* +{item.price_change_pct:.1f}% | {amt:,.0f}억({investor})\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": m_text}})
+
+        # 섹터 자금 흐름
+        if sector_flows:
+            blocks.append({"type": "divider"})
+            inflow = [s for s in sector_flows if s.flow_direction == "inflow"]
+            outflow = [s for s in sector_flows if s.flow_direction == "outflow"]
+
+            sec_text = "*💰 섹터 자금 흐름*\n"
+            if inflow:
+                sec_text += "유입: "
+                sec_text += " | ".join([f"*{s.sector}* +{s.net_buy_amount/100_000_000:,.0f}억" for s in inflow[:3]])
+                sec_text += "\n"
+            if outflow:
+                sec_text += "유출: "
+                sec_text += " | ".join([f"{s.sector} {s.net_buy_amount/100_000_000:,.0f}억" for s in outflow[:3]])
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": sec_text}})
+
+        # 연속 매수 종목
+        if has_consecutive:
+            blocks.append({"type": "divider"})
+            c_text = "*🔥 연속 순매수 종목*\n"
+            for item in consecutive_data.get("consecutive_foreigner", [])[:3]:
+                c_text += f"• *{item.stock_name}* {item.consecutive_days}일 연속 (외국인)\n"
+            for item in consecutive_data.get("consecutive_institution", [])[:3]:
+                c_text += f"• *{item.stock_name}* {item.consecutive_days}일 연속 (기관)\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": c_text}})
+
+        return self.send_message("시장 분석 인사이트", blocks)
+
+    def send_performance_summary(self, report: dict) -> bool:
+        """
+        성과 리포트 (간결 버전)
+        """
+        if report.get("total_recommendations", 0) == 0:
+            return True
+
+        avg_return = report.get("avg_return", 0)
+        win_rate = report.get("win_rate", 0)
+        total = report.get("total_recommendations", 0)
+
+        # 이모지 결정
+        if avg_return >= 3:
+            emoji, grade = "🚀", "A+"
+        elif avg_return >= 1:
+            emoji, grade = "📈", "B+"
+        elif avg_return >= 0:
+            emoji, grade = "➡️", "C"
+        else:
+            emoji, grade = "📉", "D"
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 추천 성과 리포트 (7일)"}
+            },
+            {"type": "divider"},
+        ]
+
+        # 핵심 지표 한 줄
+        summary = f"{emoji} *성과등급: {grade}* | 수익률 *{avg_return:+.1f}%* | 승률 *{win_rate:.0f}%* | {total}종목"
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": summary}})
+
+        # 최고/최저 성과
+        best = report.get("best_performer")
+        worst = report.get("worst_performer")
+
+        if best or worst:
+            blocks.append({"type": "divider"})
+            perf_text = ""
+            if best:
+                perf_text += f"🏆 *최고* {best.stock_name} *+{best.return_pct:.1f}%*"
+            if worst and worst.return_pct < 0:
+                if perf_text:
+                    perf_text += "\n"
+                perf_text += f"📉 *최저* {worst.stock_name} *{worst.return_pct:.1f}%*"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": perf_text}})
+
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "_과거 성과가 미래 수익을 보장하지 않습니다_"}]
+        })
+
+        return self.send_message("추천 성과 리포트", blocks)
+
+    # ========== 기존 메서드 (하위 호환용) ==========
+
     def send_foreigner_summary(self, data_list: list, top_n: int = 10) -> bool:
         """외국인 순매수 TOP N 요약 발송"""
         if not data_list:

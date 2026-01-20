@@ -79,7 +79,7 @@ class StockTracker:
         self._init_components()
 
         # 1. 데이터 수집
-        print("\n[1/5] 데이터 수집 중...")
+        print("\n[1/4] 데이터 수집 중...")
 
         # KRX 데이터
         print("  - KRX 외국인/기관 매매동향 수집...")
@@ -102,160 +102,88 @@ class StockTracker:
         else:
             print("  - DART API 키 미설정으로 공시 데이터 스킵")
 
-        # 2. 요약 알림 발송
-        print("\n[2/5] 요약 알림 발송 중...")
+        # 2. 시장 수급 현황 (통합 알림)
+        print("\n[2/4] 시장 수급 현황 발송 중...")
         if self.dry_run:
             print("  [DRY RUN] 실제 발송하지 않음")
-            if foreigner_data:
-                print(f"  - 외국인 순매수 TOP 10: {[d['stock_name'] for d in foreigner_data[:3]]}...")
-            if institution_data:
-                print(f"  - 기관 순매수 TOP 10: {[d['stock_name'] for d in institution_data[:3]]}...")
-            if major_shareholder_data:
-                print(f"  - 대량보유 공시: {len(major_shareholder_data)}건")
-            if executive_data:
-                print(f"  - 임원/주요주주 거래: {len(executive_data)}건")
+            print(f"  - 외국인 TOP 5: {[d['stock_name'] for d in foreigner_data[:5]]}")
+            print(f"  - 기관 TOP 5: {[d['stock_name'] for d in institution_data[:5]]}")
+            print(f"  - 공시: 대량보유 {len(major_shareholder_data)}건, 임원거래 {len(executive_data)}건")
         elif self.notifier:
-            sent_count = 0
-            # 외국인 순매수 TOP 10
-            if foreigner_data:
-                if self.notifier.send_foreigner_summary(foreigner_data, top_n=10):
-                    sent_count += 1
-                    print("  - 외국인 순매수 TOP 10 발송 완료")
-            # 기관 순매수 TOP 10
-            if institution_data:
-                if self.notifier.send_institution_summary(institution_data, top_n=10):
-                    sent_count += 1
-                    print("  - 기관 순매수 TOP 10 발송 완료")
-            # 대량보유 공시
-            if major_shareholder_data:
-                if self.notifier.send_major_shareholder_summary(major_shareholder_data, top_n=10):
-                    sent_count += 1
-                    print("  - 대량보유 공시 요약 발송 완료")
-            # 임원/주요주주 거래
-            if executive_data:
-                if self.notifier.send_executive_trading_summary(executive_data, top_n=10):
-                    sent_count += 1
-                    print("  - 임원/주요주주 거래 요약 발송 완료")
-            print(f"  발송 완료: {sent_count}개 요약 메시지")
+            self.notifier.send_market_overview(
+                foreigner_data, institution_data,
+                major_shareholder_data, executive_data
+            )
+            print("  - 시장 수급 현황 발송 완료 (1개 메시지)")
         else:
             print("  [SKIP] Slack 알림기 미설정")
 
-        # 3. 추천 발송
+        # 3. AI 추천 종목 (통합 알림)
         if send_recommendations:
-            print("\n[3/5] 매수/매도 추천 발송 중...")
+            print("\n[3/4] AI 추천 종목 발송 중...")
+
+            # 추천 데이터 생성
+            rule_based = self.recommender.get_rule_based_recommendations(
+                foreigner_data, institution_data,
+                major_shareholder_data, executive_data, top_n=5
+            )
+            score_based = self.recommender.get_score_based_recommendations(
+                foreigner_data, institution_data,
+                major_shareholder_data, executive_data, top_n=5
+            )
+            ai_analysis = self.recommender.get_ai_recommendations(
+                foreigner_data, institution_data,
+                major_shareholder_data, executive_data, top_n=5
+            )
+
             if self.dry_run:
-                print("  [DRY RUN] 추천 데이터 생성 중...")
-                rule_based = self.recommender.get_rule_based_recommendations(
-                    foreigner_data, institution_data,
-                    major_shareholder_data, executive_data, top_n=5
-                )
-                score_based = self.recommender.get_score_based_recommendations(
-                    foreigner_data, institution_data,
-                    major_shareholder_data, executive_data, top_n=5
-                )
-                print("  - 규칙 기반 추천:")
-                for rec in rule_based:
-                    print(f"    {rec.action} {rec.stock_name} (점수: {rec.score:.0f})")
-                print("  - 점수 기반 추천:")
-                for rec in score_based:
-                    print(f"    {rec.action} {rec.stock_name} (점수: {rec.score:.0f})")
-                print("  - AI 분석 추천: (GEMINI_API_KEY 필요)")
+                print("  [DRY RUN] 추천 데이터:")
+                print(f"  - 수급 일치: {[r.stock_name for r in rule_based[:3]]}")
+                print(f"  - 종합점수 TOP: {[r.stock_name for r in score_based[:3]]}")
+                print(f"  - AI 분석: {'있음' if ai_analysis else 'GEMINI_API_KEY 필요'}")
             elif self.notifier:
-                # 규칙 기반 추천
-                rule_based = self.recommender.get_rule_based_recommendations(
-                    foreigner_data, institution_data,
-                    major_shareholder_data, executive_data, top_n=5
-                )
-                if rule_based:
-                    self.notifier.send_rule_based_recommendations(rule_based)
-                    print("  - 규칙 기반 추천 발송 완료")
-
-                # 점수 기반 추천
-                score_based = self.recommender.get_score_based_recommendations(
-                    foreigner_data, institution_data,
-                    major_shareholder_data, executive_data, top_n=5
-                )
-                if score_based:
-                    self.notifier.send_score_based_recommendations(score_based)
-                    print("  - 점수 기반 추천 발송 완료")
-
-                # AI 분석 추천
-                ai_analysis = self.recommender.get_ai_recommendations(
-                    foreigner_data, institution_data,
-                    major_shareholder_data, executive_data, top_n=5
-                )
-                if ai_analysis:
-                    self.notifier.send_ai_recommendations(ai_analysis)
-                    print("  - AI 분석 추천 발송 완료")
-                else:
-                    print("  - AI 분석 스킵 (GEMINI_API_KEY 미설정)")
+                # 통합 추천 알림 발송
+                self.notifier.send_unified_recommendations(rule_based, score_based, ai_analysis)
+                print("  - AI 추천 종목 발송 완료 (1개 메시지)")
 
                 # 추천 성과 추적을 위해 저장
                 self.performance_tracker.save_recommendations(rule_based, score_based)
         else:
             rule_based = []
             score_based = []
-            print("\n[3/5] 추천 스킵")
+            print("\n[3/4] 추천 스킵")
 
-        # 4. 데이터 분석 강화 (연속 매수, 모멘텀, 섹터 흐름)
-        print("\n[4/5] 데이터 분석 강화 중...")
+        # 4. 분석 인사이트 (통합 알림)
+        print("\n[4/4] 분석 인사이트 발송 중...")
         analysis_results = self.data_analyzer.get_all_analysis(foreigner_data, institution_data)
 
         if self.dry_run:
             print("  [DRY RUN] 분석 결과:")
-            print(f"    연속 매수 (외국인): {len(analysis_results['consecutive_foreigner'])}건")
-            print(f"    연속 매수 (기관): {len(analysis_results['consecutive_institution'])}건")
-            print(f"    모멘텀 종목: {len(analysis_results['momentum_stocks'])}건")
-            print(f"    섹터 흐름: {len(analysis_results['sector_flow'])}건")
+            print(f"  - 모멘텀: {len(analysis_results['momentum_stocks'])}건")
+            print(f"  - 섹터 흐름: {len(analysis_results['sector_flow'])}건")
+            print(f"  - 연속 매수: 외국인 {len(analysis_results['consecutive_foreigner'])}건, 기관 {len(analysis_results['consecutive_institution'])}건")
         elif self.notifier:
-            # 연속 매수 종목
-            if analysis_results['consecutive_foreigner'] or analysis_results['consecutive_institution']:
-                self.notifier.send_consecutive_buy_alert(analysis_results)
-                print("  - 연속 매수 종목 발송 완료")
-
-            # 모멘텀 종목
-            if analysis_results['momentum_stocks']:
-                self.notifier.send_momentum_alert(analysis_results['momentum_stocks'])
-                print("  - 모멘텀 종목 발송 완료")
-
-            # 섹터별 자금 흐름
-            if analysis_results['sector_flow']:
-                self.notifier.send_sector_flow_alert(analysis_results['sector_flow'])
-                print("  - 섹터 자금 흐름 발송 완료")
-
-        # 5. 일일 요약 및 성과 리포트 (옵션)
-        if send_summary:
-            print("\n[5/5] 일일 요약 및 성과 리포트 발송 중...")
-            summary = self.analyzer.get_daily_summary(
-                foreigner_data,
-                institution_data,
-                major_shareholder_data,
-                executive_data
+            # 통합 분석 인사이트 발송
+            self.notifier.send_analysis_insights(
+                analysis_results,
+                analysis_results['momentum_stocks'],
+                analysis_results['sector_flow']
             )
+            print("  - 분석 인사이트 발송 완료 (1개 메시지)")
 
-            # 7일간 추천 성과 리포트
+        # 일일 요약 시 성과 리포트 추가 발송 (옵션)
+        if send_summary:
+            print("\n[+] 성과 리포트 발송 중...")
             performance_report = self.performance_tracker.get_performance_report(days=7)
 
             if self.dry_run:
-                print("  [DRY RUN] 요약 데이터:")
-                print(f"    외국인 TOP: {[d['stock_name'] for d in summary['foreigner_top'][:3]]}")
-                print(f"    기관 TOP: {[d['stock_name'] for d in summary['institution_top'][:3]]}")
-                print(f"  [DRY RUN] 성과 리포트:")
-                print(f"    추천 수: {performance_report['total_recommendations']}건")
-                print(f"    평균 수익률: {performance_report['avg_return']}%")
-                print(f"    승률: {performance_report['win_rate']}%")
+                print(f"  [DRY RUN] 성과: 추천 {performance_report['total_recommendations']}건, 수익률 {performance_report['avg_return']}%, 승률 {performance_report['win_rate']}%")
             elif self.notifier:
-                self.notifier.send_daily_summary(summary)
-                print("  - 일일 요약 발송 완료")
-
-                # 성과 리포트 발송 (추천 기록이 있을 때만)
                 if performance_report['total_recommendations'] > 0:
-                    self.notifier.send_performance_report(performance_report)
-                    print("  - 추천 성과 리포트 발송 완료")
+                    self.notifier.send_performance_summary(performance_report)
+                    print("  - 성과 리포트 발송 완료")
                 else:
                     print("  - 성과 리포트 스킵 (추천 기록 없음)")
-        else:
-            print("\n[5/5] 일일 요약 스킵")
 
         # 오래된 알림 기록 정리
         self.analyzer.clear_old_alerts(days=7)

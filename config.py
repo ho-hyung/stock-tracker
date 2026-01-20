@@ -9,6 +9,9 @@ DART_API_KEY = os.getenv("DART_API_KEY", "")
 # Slack 설정
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 
+# Gemini API 설정
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
 # 알림 조건 설정
 ALERT_CONFIG = {
     # 외국인/기관 연속 매수일 기준

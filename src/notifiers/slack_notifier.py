@@ -223,6 +223,132 @@ class SlackNotifier:
 
         return self.send_message(f"임원/주요주주 거래 {len(data_list)}건", blocks)
 
+    def send_rule_based_recommendations(self, recommendations: list) -> bool:
+        """규칙 기반 추천 발송"""
+        if not recommendations:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"1. 규칙 기반 추천 TOP {len(recommendations)}",
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"📅 {today} | 외국인+기관 수급 분석"}
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        for i, rec in enumerate(recommendations, 1):
+            action_emoji = "🟢" if rec.action == "BUY" else "🟡" if rec.action == "HOLD" else "🔴"
+            rec_text = f"*{i}. {rec.stock_name}* (`{rec.stock_code}`) {action_emoji} {rec.action}\n"
+            rec_text += f"📊 점수: *{rec.score:.0f}점*\n"
+            rec_text += f"✅ 이유: {', '.join(rec.reasons)}\n"
+            rec_text += f"⚠️ 리스크: {', '.join(rec.risk_factors)}"
+
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": rec_text}
+            })
+
+        return self.send_message("규칙 기반 추천", blocks)
+
+    def send_score_based_recommendations(self, recommendations: list) -> bool:
+        """점수 기반 추천 발송"""
+        if not recommendations:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"2. 점수 기반 추천 TOP {len(recommendations)}",
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"📅 {today} | 외국인(40)+기관(40)+내부자(20) = 100점"}
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        for i, rec in enumerate(recommendations, 1):
+            action_emoji = "🟢" if rec.action == "BUY" else "🟡" if rec.action == "HOLD" else "🔴"
+            rec_text = f"*{i}. {rec.stock_name}* (`{rec.stock_code}`) {action_emoji} {rec.action}\n"
+            rec_text += f"📊 종합점수: *{rec.score:.0f}점*\n"
+            rec_text += f"✅ {', '.join(rec.reasons)}"
+
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": rec_text}
+            })
+
+        return self.send_message("점수 기반 추천", blocks)
+
+    def send_ai_recommendations(self, ai_analysis: str) -> bool:
+        """AI 분석 추천 발송"""
+        if not ai_analysis:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # AI 응답이 너무 길면 분할
+        max_length = 2900  # Slack 블록 텍스트 제한
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "3. AI 분석 추천 (Gemini)",
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"📅 {today} | AI 종합 분석"}
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        # 텍스트 분할
+        if len(ai_analysis) <= max_length:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": ai_analysis}
+            })
+        else:
+            # 긴 텍스트를 여러 블록으로 분할
+            chunks = [ai_analysis[i:i+max_length] for i in range(0, len(ai_analysis), max_length)]
+            for chunk in chunks[:5]:  # 최대 5개 블록
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": chunk}
+                })
+
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": "_⚠️ AI 분석은 참고용이며 투자 판단의 책임은 본인에게 있습니다._"}
+            ]
+        })
+
+        return self.send_message("AI 분석 추천", blocks)
+
     def send_daily_summary(self, summary: dict) -> bool:
         """일일 종합 요약 알림 발송"""
         today = datetime.now().strftime("%Y-%m-%d")

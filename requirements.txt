@@ -5,3 +5,4 @@ pandas>=2.0.0
 finance-datareader>=0.9.0
 beautifulsoup4>=4.12.0
 setuptools
+google-generativeai>=0.8.0

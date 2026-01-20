@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from src.collectors.dart_collector import DartCollector
 from src.collectors.krx_collector import KrxCollector
 from src.analyzers.signal_analyzer import SignalAnalyzer
+from src.analyzers.stock_recommender import StockRecommender
 from src.notifiers.slack_notifier import SlackNotifier
 
 
@@ -25,6 +26,7 @@ class StockTracker:
         self.dart_collector = None
         self.krx_collector = None
         self.analyzer = None
+        self.recommender = None
         self.notifier = None
 
     def _init_components(self):
@@ -34,6 +36,9 @@ class StockTracker:
 
         if self.analyzer is None:
             self.analyzer = SignalAnalyzer()
+
+        if self.recommender is None:
+            self.recommender = StockRecommender()
 
         # DART와 Slack은 API 키가 필요하므로 별도 처리
         try:
@@ -49,12 +54,13 @@ class StockTracker:
             except ValueError as e:
                 print(f"[WARNING] Slack 알림기 초기화 실패: {e}")
 
-    def run_once(self, send_summary: bool = False):
+    def run_once(self, send_summary: bool = False, send_recommendations: bool = True):
         """
         한 번 실행
 
         Args:
             send_summary: 일일 요약 발송 여부
+            send_recommendations: 추천 발송 여부
         """
         print(f"\n{'='*50}")
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 주식 고수 추적 시작")
@@ -63,7 +69,7 @@ class StockTracker:
         self._init_components()
 
         # 1. 데이터 수집
-        print("\n[1/3] 데이터 수집 중...")
+        print("\n[1/4] 데이터 수집 중...")
 
         # KRX 데이터
         print("  - KRX 외국인/기관 매매동향 수집...")
@@ -87,7 +93,7 @@ class StockTracker:
             print("  - DART API 키 미설정으로 공시 데이터 스킵")
 
         # 2. 요약 알림 발송
-        print("\n[2/3] 요약 알림 발송 중...")
+        print("\n[2/4] 요약 알림 발송 중...")
         if self.dry_run:
             print("  [DRY RUN] 실제 발송하지 않음")
             if foreigner_data:
@@ -124,9 +130,61 @@ class StockTracker:
         else:
             print("  [SKIP] Slack 알림기 미설정")
 
-        # 3. 일일 요약 (옵션)
+        # 3. 추천 발송
+        if send_recommendations:
+            print("\n[3/4] 매수/매도 추천 발송 중...")
+            if self.dry_run:
+                print("  [DRY RUN] 추천 데이터 생성 중...")
+                rule_based = self.recommender.get_rule_based_recommendations(
+                    foreigner_data, institution_data,
+                    major_shareholder_data, executive_data, top_n=5
+                )
+                score_based = self.recommender.get_score_based_recommendations(
+                    foreigner_data, institution_data,
+                    major_shareholder_data, executive_data, top_n=5
+                )
+                print("  - 규칙 기반 추천:")
+                for rec in rule_based:
+                    print(f"    {rec.action} {rec.stock_name} (점수: {rec.score:.0f})")
+                print("  - 점수 기반 추천:")
+                for rec in score_based:
+                    print(f"    {rec.action} {rec.stock_name} (점수: {rec.score:.0f})")
+                print("  - AI 분석 추천: (GEMINI_API_KEY 필요)")
+            elif self.notifier:
+                # 규칙 기반 추천
+                rule_based = self.recommender.get_rule_based_recommendations(
+                    foreigner_data, institution_data,
+                    major_shareholder_data, executive_data, top_n=5
+                )
+                if rule_based:
+                    self.notifier.send_rule_based_recommendations(rule_based)
+                    print("  - 규칙 기반 추천 발송 완료")
+
+                # 점수 기반 추천
+                score_based = self.recommender.get_score_based_recommendations(
+                    foreigner_data, institution_data,
+                    major_shareholder_data, executive_data, top_n=5
+                )
+                if score_based:
+                    self.notifier.send_score_based_recommendations(score_based)
+                    print("  - 점수 기반 추천 발송 완료")
+
+                # AI 분석 추천
+                ai_analysis = self.recommender.get_ai_recommendations(
+                    foreigner_data, institution_data,
+                    major_shareholder_data, executive_data, top_n=5
+                )
+                if ai_analysis:
+                    self.notifier.send_ai_recommendations(ai_analysis)
+                    print("  - AI 분석 추천 발송 완료")
+                else:
+                    print("  - AI 분석 스킵 (GEMINI_API_KEY 미설정)")
+        else:
+            print("\n[3/4] 추천 스킵")
+
+        # 4. 일일 요약 (옵션)
         if send_summary:
-            print("\n[3/3] 일일 요약 발송 중...")
+            print("\n[4/4] 일일 요약 발송 중...")
             summary = self.analyzer.get_daily_summary(
                 foreigner_data,
                 institution_data,
@@ -141,7 +199,7 @@ class StockTracker:
                 self.notifier.send_daily_summary(summary)
                 print("  일일 요약 발송 완료")
         else:
-            print("\n[3/3] 일일 요약 스킵")
+            print("\n[4/4] 일일 요약 스킵")
 
         # 오래된 알림 기록 정리
         self.analyzer.clear_old_alerts(days=7)

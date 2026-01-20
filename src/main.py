@@ -15,6 +15,7 @@ from src.collectors.dart_collector import DartCollector
 from src.collectors.krx_collector import KrxCollector
 from src.analyzers.signal_analyzer import SignalAnalyzer
 from src.analyzers.stock_recommender import StockRecommender
+from src.analyzers.data_analyzer import DataAnalyzer
 from src.notifiers.slack_notifier import SlackNotifier
 
 
@@ -27,6 +28,7 @@ class StockTracker:
         self.krx_collector = None
         self.analyzer = None
         self.recommender = None
+        self.data_analyzer = None
         self.notifier = None
 
     def _init_components(self):
@@ -39,6 +41,9 @@ class StockTracker:
 
         if self.recommender is None:
             self.recommender = StockRecommender()
+
+        if self.data_analyzer is None:
+            self.data_analyzer = DataAnalyzer()
 
         # DART와 Slack은 API 키가 필요하므로 별도 처리
         try:
@@ -69,7 +74,7 @@ class StockTracker:
         self._init_components()
 
         # 1. 데이터 수집
-        print("\n[1/4] 데이터 수집 중...")
+        print("\n[1/5] 데이터 수집 중...")
 
         # KRX 데이터
         print("  - KRX 외국인/기관 매매동향 수집...")
@@ -93,7 +98,7 @@ class StockTracker:
             print("  - DART API 키 미설정으로 공시 데이터 스킵")
 
         # 2. 요약 알림 발송
-        print("\n[2/4] 요약 알림 발송 중...")
+        print("\n[2/5] 요약 알림 발송 중...")
         if self.dry_run:
             print("  [DRY RUN] 실제 발송하지 않음")
             if foreigner_data:
@@ -132,7 +137,7 @@ class StockTracker:
 
         # 3. 추천 발송
         if send_recommendations:
-            print("\n[3/4] 매수/매도 추천 발송 중...")
+            print("\n[3/5] 매수/매도 추천 발송 중...")
             if self.dry_run:
                 print("  [DRY RUN] 추천 데이터 생성 중...")
                 rule_based = self.recommender.get_rule_based_recommendations(
@@ -180,11 +185,37 @@ class StockTracker:
                 else:
                     print("  - AI 분석 스킵 (GEMINI_API_KEY 미설정)")
         else:
-            print("\n[3/4] 추천 스킵")
+            print("\n[3/5] 추천 스킵")
 
-        # 4. 일일 요약 (옵션)
+        # 4. 데이터 분석 강화 (연속 매수, 모멘텀, 섹터 흐름)
+        print("\n[4/5] 데이터 분석 강화 중...")
+        analysis_results = self.data_analyzer.get_all_analysis(foreigner_data, institution_data)
+
+        if self.dry_run:
+            print("  [DRY RUN] 분석 결과:")
+            print(f"    연속 매수 (외국인): {len(analysis_results['consecutive_foreigner'])}건")
+            print(f"    연속 매수 (기관): {len(analysis_results['consecutive_institution'])}건")
+            print(f"    모멘텀 종목: {len(analysis_results['momentum_stocks'])}건")
+            print(f"    섹터 흐름: {len(analysis_results['sector_flow'])}건")
+        elif self.notifier:
+            # 연속 매수 종목
+            if analysis_results['consecutive_foreigner'] or analysis_results['consecutive_institution']:
+                self.notifier.send_consecutive_buy_alert(analysis_results)
+                print("  - 연속 매수 종목 발송 완료")
+
+            # 모멘텀 종목
+            if analysis_results['momentum_stocks']:
+                self.notifier.send_momentum_alert(analysis_results['momentum_stocks'])
+                print("  - 모멘텀 종목 발송 완료")
+
+            # 섹터별 자금 흐름
+            if analysis_results['sector_flow']:
+                self.notifier.send_sector_flow_alert(analysis_results['sector_flow'])
+                print("  - 섹터 자금 흐름 발송 완료")
+
+        # 5. 일일 요약 (옵션)
         if send_summary:
-            print("\n[4/4] 일일 요약 발송 중...")
+            print("\n[5/5] 일일 요약 발송 중...")
             summary = self.analyzer.get_daily_summary(
                 foreigner_data,
                 institution_data,
@@ -199,7 +230,7 @@ class StockTracker:
                 self.notifier.send_daily_summary(summary)
                 print("  일일 요약 발송 완료")
         else:
-            print("\n[4/4] 일일 요약 스킵")
+            print("\n[5/5] 일일 요약 스킵")
 
         # 오래된 알림 기록 정리
         self.analyzer.clear_old_alerts(days=7)

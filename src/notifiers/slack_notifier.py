@@ -349,6 +349,145 @@ class SlackNotifier:
 
         return self.send_message("AI 분석 추천", blocks)
 
+    def send_consecutive_buy_alert(self, consecutive_data: dict) -> bool:
+        """연속 매수 종목 알림 발송"""
+        foreigner_list = consecutive_data.get("consecutive_foreigner", [])
+        institution_list = consecutive_data.get("consecutive_institution", [])
+
+        if not foreigner_list and not institution_list:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "🔥 연속 순매수 종목",
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"📅 {today} | N일 연속 순매수 감지"}
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        # 외국인 연속 매수
+        if foreigner_list:
+            text = "*📈 외국인 연속 매수*\n"
+            for item in foreigner_list[:5]:
+                amount = item.total_net_buy / 100_000_000
+                text += f"• *{item.stock_name}* - {item.consecutive_days}일 연속 ({amount:,.0f}억원)\n"
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text}
+            })
+
+        # 기관 연속 매수
+        if institution_list:
+            text = "*🏦 기관 연속 매수*\n"
+            for item in institution_list[:5]:
+                amount = item.total_net_buy / 100_000_000
+                text += f"• *{item.stock_name}* - {item.consecutive_days}일 연속 ({amount:,.0f}억원)\n"
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text}
+            })
+
+        return self.send_message("연속 매수 종목", blocks)
+
+    def send_momentum_alert(self, momentum_stocks: list) -> bool:
+        """모멘텀 종목 (순매수 + 주가 상승) 알림 발송"""
+        if not momentum_stocks:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "🚀 모멘텀 종목 (수급+상승)",
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"📅 {today} | 순매수 + 주가 상승 동반"}
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        text = ""
+        for i, item in enumerate(momentum_stocks[:10], 1):
+            amount = item.net_buy_amount / 100_000_000
+            investor = "외국인" if item.investor_type == "foreigner" else "기관"
+            text += f"*{i}. {item.stock_name}* - +{item.price_change_pct:.1f}% | {amount:,.0f}억 ({investor})\n"
+
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text}
+        })
+
+        return self.send_message("모멘텀 종목", blocks)
+
+    def send_sector_flow_alert(self, sector_flows: list) -> bool:
+        """섹터별 자금 흐름 알림 발송"""
+        if not sector_flows:
+            return True
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "📊 섹터별 자금 흐름",
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"📅 {today} | 업종별 외국인/기관 수급"}
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        # 유입 섹터
+        inflow_text = "*💰 자금 유입 섹터*\n"
+        outflow_text = "*💸 자금 유출 섹터*\n"
+
+        for sector in sector_flows:
+            amount = abs(sector.net_buy_amount) / 100_000_000
+            top_stocks = ", ".join(sector.top_stocks[:2]) if sector.top_stocks else "-"
+
+            if sector.flow_direction == "inflow":
+                inflow_text += f"• *{sector.sector}*: +{amount:,.0f}억 ({top_stocks})\n"
+            else:
+                outflow_text += f"• *{sector.sector}*: -{amount:,.0f}억 ({top_stocks})\n"
+
+        if "+" in inflow_text:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": inflow_text}
+            })
+
+        if "-" in outflow_text:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": outflow_text}
+            })
+
+        return self.send_message("섹터별 자금 흐름", blocks)
+
     def send_daily_summary(self, summary: dict) -> bool:
         """일일 종합 요약 알림 발송"""
         today = datetime.now().strftime("%Y-%m-%d")

@@ -17,6 +17,7 @@ from src.analyzers.signal_analyzer import SignalAnalyzer
 from src.analyzers.stock_recommender import StockRecommender
 from src.analyzers.data_analyzer import DataAnalyzer
 from src.analyzers.performance_tracker import PerformanceTracker
+from src.analyzers.backtester import Backtester
 from src.notifiers.slack_notifier import SlackNotifier
 
 
@@ -247,30 +248,63 @@ class StockTracker:
             time.sleep(60)
 
 
+def run_backtest(days: int = 90, send_slack: bool = False):
+    """백테스트 실행"""
+    print(f"\n{'='*50}")
+    print("📊 백테스트 모드")
+    print(f"{'='*50}")
+
+    backtester = Backtester()
+    summary = backtester.run_backtest(days=days)
+
+    # 콘솔 출력
+    print(backtester.get_report_text(summary))
+
+    # Slack 발송
+    if send_slack and summary.total_recommendations > 0:
+        try:
+            notifier = SlackNotifier()
+            notifier.send_backtest_report(summary)
+            print("\n✅ Slack으로 백테스트 리포트 발송 완료")
+        except Exception as e:
+            print(f"\n❌ Slack 발송 실패: {e}")
+
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser(description="주식 고수 추적 알림 시스템")
     parser.add_argument(
         "--mode",
-        choices=["once", "scheduler", "summary"],
+        choices=["once", "scheduler", "summary", "backtest"],
         default="once",
-        help="실행 모드 (once: 1회 실행, scheduler: 스케줄러, summary: 요약만)"
+        help="실행 모드 (once: 1회 실행, scheduler: 스케줄러, summary: 요약만, backtest: 백테스트)"
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="테스트 모드 (Slack 발송 안함)"
     )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=90,
+        help="백테스트 분석 기간 (기본: 90일)"
+    )
 
     args = parser.parse_args()
 
-    tracker = StockTracker(dry_run=args.dry_run)
+    if args.mode == "backtest":
+        run_backtest(days=args.days, send_slack=not args.dry_run)
+    else:
+        tracker = StockTracker(dry_run=args.dry_run)
 
-    if args.mode == "once":
-        tracker.run_once(send_summary=False)
-    elif args.mode == "summary":
-        tracker.run_once(send_summary=True)
-    elif args.mode == "scheduler":
-        tracker.run_scheduler()
+        if args.mode == "once":
+            tracker.run_once(send_summary=False)
+        elif args.mode == "summary":
+            tracker.run_once(send_summary=True)
+        elif args.mode == "scheduler":
+            tracker.run_scheduler()
 
 
 if __name__ == "__main__":

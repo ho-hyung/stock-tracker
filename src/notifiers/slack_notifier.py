@@ -905,6 +905,106 @@ class SlackNotifier:
         return self.send_message("일일 종합 요약", blocks)
 
 
+    def send_backtest_report(self, summary) -> bool:
+        """
+        백테스트 결과 리포트 발송
+
+        Args:
+            summary: BacktestSummary 객체
+        """
+        if summary.total_recommendations == 0:
+            return True
+
+        # 5일 기준 성과 등급
+        avg_5d = summary.avg_returns.get(5, 0)
+        excess_5d = summary.avg_excess_returns.get(5, 0)
+
+        if avg_5d >= 3:
+            grade_emoji, grade = "🚀", "A+"
+        elif avg_5d >= 1:
+            grade_emoji, grade = "📈", "A"
+        elif avg_5d >= 0:
+            grade_emoji, grade = "➡️", "B"
+        elif avg_5d >= -2:
+            grade_emoji, grade = "📉", "C"
+        else:
+            grade_emoji, grade = "💀", "D"
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 백테스트 결과 리포트"}
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"📅 분석기간: {summary.period} | 추천 {summary.total_recommendations}건"}]
+            },
+            {"type": "divider"},
+        ]
+
+        # 성과 등급
+        grade_text = (
+            f"{grade_emoji} *전략 성과 등급: {grade}*\n\n"
+            f"5일 평균수익률 *{avg_5d:+.2f}%* | "
+            f"KOSPI 대비 *{excess_5d:+.2f}%*"
+        )
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": grade_text}})
+
+        # 보유기간별 성과 테이블
+        blocks.append({"type": "divider"})
+        period_text = "*📈 보유기간별 성과*\n```\n"
+        period_text += "기간  | 평균수익 | 승률   | 초과수익\n"
+        period_text += "------|----------|--------|--------\n"
+
+        for period in [1, 3, 5, 10, 20]:
+            avg_ret = summary.avg_returns.get(period, 0)
+            win_rate = summary.win_rates.get(period, 0)
+            excess = summary.avg_excess_returns.get(period, 0)
+            period_text += f"{period:2d}일  | {avg_ret:+6.2f}% | {win_rate:5.1f}% | {excess:+6.2f}%\n"
+
+        period_text += "```"
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": period_text}})
+
+        # 추천 유형별 성과
+        if summary.by_recommendation_type:
+            blocks.append({"type": "divider"})
+            type_text = "*🎯 추천 유형별 성과 (5일)*\n"
+            for rec_type, stats in summary.by_recommendation_type.items():
+                type_label = "수급일치" if rec_type == "rule_based" else "종합점수" if rec_type == "score_based" else rec_type
+                type_text += f"• *{type_label}*: {stats['count']}건 | {stats['avg_return_5d']:+.2f}% | 승률 {stats['win_rate_5d']:.1f}%\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": type_text}})
+
+        # 최고/최저 성과
+        best = summary.best_performers.get(5)
+        worst = summary.worst_performers.get(5)
+
+        if best or worst:
+            blocks.append({"type": "divider"})
+            perf_text = "*🏆 5일 성과 TOP/BOTTOM*\n"
+            if best:
+                perf_text += f"• 최고: *{best.stock_name}* +{best.returns[5]:.2f}% ({best.recommended_date})\n"
+            if worst and worst.returns.get(5, 0) < 0:
+                perf_text += f"• 최저: *{worst.stock_name}* {worst.returns[5]:.2f}% ({worst.recommended_date})"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": perf_text}})
+
+        # 결론
+        blocks.append({"type": "divider"})
+        if excess_5d > 1:
+            conclusion = "✅ *결론*: 시장 대비 양호한 성과. 추천 전략 유효."
+        elif excess_5d > -1:
+            conclusion = "➡️ *결론*: 시장과 비슷한 성과. 추가 분석 필요."
+        else:
+            conclusion = "⚠️ *결론*: 시장 대비 부진. 전략 개선 필요."
+
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": conclusion}})
+
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "_과거 성과가 미래 수익을 보장하지 않습니다_"}]
+        })
+
+        return self.send_message("백테스트 결과 리포트", blocks)
+
     def send_gemini_usage_warning(self, usage_info: dict) -> bool:
         """
         Gemini API 사용량 80% 경고 알림

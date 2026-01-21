@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from typing import Optional
+import math
 import FinanceDataReader as fdr
 
 
@@ -43,16 +44,27 @@ class KrxCollector:
 
             results = []
             for _, row in df.iterrows():
-                # Close가 문자열일 수 있으므로 변환
-                close_price = row.get("Close", 0)
-                try:
-                    close_price = int(str(close_price).replace(",", "")) if close_price else 0
-                except (ValueError, TypeError):
-                    close_price = 0
+                # NaN 체크 함수
+                def safe_int(val, default=0):
+                    if val is None or (isinstance(val, float) and math.isnan(val)):
+                        return default
+                    try:
+                        return int(str(val).replace(",", ""))
+                    except (ValueError, TypeError):
+                        return default
 
-                volume = int(row.get("Volume", 0) or 0)
-                market_cap = int(row.get("Marcap", 0) or 0)
-                change_rate = float(row.get("ChagesRatio", 0) or 0)
+                def safe_float(val, default=0.0):
+                    if val is None or (isinstance(val, float) and math.isnan(val)):
+                        return default
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        return default
+
+                close_price = safe_int(row.get("Close", 0))
+                volume = safe_int(row.get("Volume", 0))
+                market_cap = safe_int(row.get("Marcap", 0))
+                change_rate = safe_float(row.get("ChagesRatio", 0))
 
                 results.append({
                     "stock_code": row["Code"],

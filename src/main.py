@@ -231,32 +231,22 @@ class StockTracker:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] 주말이므로 스킵")
 
     def run_scheduler(self):
-        """스케줄러 실행 (평일 장중 10회)"""
+        """스케줄러 실행 (평일 장중 5회)"""
         print("주식 고수 추적 스케줄러 시작")
         print("=" * 50)
         print("스케줄 (평일만 실행):")
-        print("  09:10 - 장 시작 직후")
-        print("  09:40 - 초반 방향성 확인")
-        print("  10:30 - 오전 중반 (외국인/기관 본격 매매)")
+        print("  09:15 - 장 시작 후 방향성")
         print("  11:30 - 오전장 마무리")
-        print("  13:00 - 오후장 시작")
-        print("  14:00 - 오후장 본격화")
-        print("  14:30 - 장 마감 1시간 전")
-        print("  15:10 - 장 마감 직전 (포지션 정리)")
-        print("  15:40 - 장 마감 직후 (확정 데이터)")
+        print("  14:00 - 오후장 동향")
+        print("  15:40 - 장 마감 확정 데이터")
         print("  17:00 - 일일 요약")
         print("=" * 50)
         print("Ctrl+C로 종료\n")
 
-        # 장중 모니터링 (9회) - 평일만
-        schedule.every().day.at("09:10").do(self._run_if_weekday, send_summary=False)
-        schedule.every().day.at("09:40").do(self._run_if_weekday, send_summary=False)
-        schedule.every().day.at("10:30").do(self._run_if_weekday, send_summary=False)
+        # 장중 모니터링 (4회) - 평일만
+        schedule.every().day.at("09:15").do(self._run_if_weekday, send_summary=False)
         schedule.every().day.at("11:30").do(self._run_if_weekday, send_summary=False)
-        schedule.every().day.at("13:00").do(self._run_if_weekday, send_summary=False)
         schedule.every().day.at("14:00").do(self._run_if_weekday, send_summary=False)
-        schedule.every().day.at("14:30").do(self._run_if_weekday, send_summary=False)
-        schedule.every().day.at("15:10").do(self._run_if_weekday, send_summary=False)
         schedule.every().day.at("15:40").do(self._run_if_weekday, send_summary=False)
 
         # 일일 요약 (1회) - 평일만

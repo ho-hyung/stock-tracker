@@ -327,10 +327,9 @@ class StockRecommender:
             return None
 
         try:
-            import google.generativeai as genai
+            from google import genai
 
-            genai.configure(api_key=self.gemini_api_key)
-            model = genai.GenerativeModel('gemini-2.0-flash')
+            client = genai.Client(api_key=self.gemini_api_key)
 
             # 데이터 요약 준비
             foreigner_summary = []
@@ -383,7 +382,10 @@ class StockRecommender:
 ⚠️ 주의: 위 분석은 참고용이며 투자 판단은 본인 책임입니다.
 """
 
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt
+            )
 
             # 사용량 추적
             self.last_usage_info = self.usage_tracker.increment()
@@ -391,7 +393,7 @@ class StockRecommender:
             return response.text
 
         except ImportError:
-            return "Gemini API 사용을 위해 google-generativeai 패키지를 설치해주세요: pip install google-generativeai"
+            return "Gemini API 사용을 위해 google-genai 패키지를 설치해주세요: pip install google-genai"
         except Exception as e:
             return f"AI 분석 중 오류 발생: {str(e)}"
 

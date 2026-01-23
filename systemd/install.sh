@@ -5,8 +5,8 @@ echo "Stock Tracker 서비스 설치"
 echo "=========================="
 
 # 경로 설정 (필요시 수정)
-PROJECT_DIR="/home/ubuntu/stock-tracker"
-USER="ubuntu"
+PROJECT_DIR="/home/kollus/stock-tracker"
+USER="kollus"
 
 # 서비스 파일 복사
 sudo cp stock-tracker-scheduler.service /etc/systemd/system/

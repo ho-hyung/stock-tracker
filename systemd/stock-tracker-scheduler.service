@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/stock-tracker
-ExecStart=/home/ubuntu/stock-tracker/venv/bin/python src/main.py --mode scheduler
+User=kollus
+WorkingDirectory=/home/kollus/stock-tracker
+ExecStart=/home/kollus/stock-tracker/venv/bin/python src/main.py --mode scheduler
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1

@@ -905,6 +905,55 @@ class SlackNotifier:
         return self.send_message("일일 종합 요약", blocks)
 
 
+    def send_price_alert(self, triggered_alerts: list) -> bool:
+        """
+        가격 알림 발송
+
+        Args:
+            triggered_alerts: 발동된 알림 리스트
+        """
+        if not triggered_alerts:
+            return True
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "🔔 가격 알림"}
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"🕐 {now}"}]
+            },
+            {"type": "divider"},
+        ]
+
+        for alert in triggered_alerts:
+            alert_type_text = "이하 도달" if alert["alert_type"] == "below" else "이상 도달"
+            emoji = "📉" if alert["alert_type"] == "below" else "📈"
+            memo = f"\n💬 _{alert['memo']}_" if alert.get("memo") else ""
+
+            alert_text = (
+                f"{emoji} *{alert['stock_name']}* `{alert['stock_code']}`\n"
+                f"목표가 *{alert['target_price']:,}원* {alert_type_text}!\n"
+                f"현재가 *{alert['current_price']:,}원* ({alert['change_rate']:+.2f}%)"
+                f"{memo}"
+            )
+
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": alert_text}
+            })
+
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "_알림이 발동되어 비활성화되었습니다. 재설정이 필요하면 다시 추가해주세요._"}]
+        })
+
+        return self.send_message("가격 알림", blocks)
+
     def send_trading_signals(self, recommendations: list, risk_levels: dict) -> bool:
         """
         손절/익절 기준이 포함된 매매 시그널 발송

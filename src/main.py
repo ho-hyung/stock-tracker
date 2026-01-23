@@ -19,6 +19,7 @@ from src.analyzers.data_analyzer import DataAnalyzer
 from src.analyzers.performance_tracker import PerformanceTracker
 from src.analyzers.backtester import Backtester
 from src.analyzers.risk_manager import RiskManager
+from src.analyzers.price_alert import PriceAlertManager
 from src.notifiers.slack_notifier import SlackNotifier
 
 
@@ -34,6 +35,7 @@ class StockTracker:
         self.data_analyzer = None
         self.performance_tracker = None
         self.risk_manager = None
+        self.price_alert_manager = None
         self.notifier = None
 
     def _init_components(self):
@@ -55,6 +57,9 @@ class StockTracker:
 
         if self.risk_manager is None:
             self.risk_manager = RiskManager()
+
+        if self.price_alert_manager is None:
+            self.price_alert_manager = PriceAlertManager()
 
         # DART와 Slack은 API 키가 필요하므로 별도 처리
         try:
@@ -83,6 +88,17 @@ class StockTracker:
         print(f"{'='*50}")
 
         self._init_components()
+
+        # 0. 가격 알림 체크 (설정된 경우)
+        active_alerts = self.price_alert_manager.get_active_alerts()
+        if active_alerts:
+            print(f"\n[가격 알림] {len(active_alerts)}개 모니터링 중...")
+            triggered = self.price_alert_manager.check_alerts()
+            if triggered:
+                print(f"  - ⚠️ {len(triggered)}개 알림 발동!")
+                if self.notifier:
+                    self.notifier.send_price_alert(triggered)
+                    print("  - Slack 알림 발송 완료")
 
         # 1. 데이터 수집
         print("\n[1/4] 데이터 수집 중...")
@@ -281,13 +297,83 @@ def run_backtest(days: int = 90, send_slack: bool = False):
     return summary
 
 
+def manage_alerts(args):
+    """가격 알림 관리"""
+    from src.analyzers.price_alert import PriceAlertManager, format_alert_list
+    from src.utils.price_fetcher import get_realtime_price
+
+    manager = PriceAlertManager()
+
+    if args.alert_list:
+        # 알림 목록 출력
+        alerts = manager.get_all_alerts()
+        print(format_alert_list(alerts))
+
+    elif args.alert_add:
+        # 알림 추가
+        if not args.code or not args.price:
+            print("❌ --code와 --price는 필수입니다.")
+            print("   예: --mode alert --add --code 005930 --price 70000")
+            return
+
+        # 종목명 조회
+        price_info = get_realtime_price(args.code)
+        stock_name = price_info.stock_name if price_info else args.code
+
+        alert_type = args.type if args.type else "below"
+        memo = args.memo if args.memo else ""
+
+        alert = manager.add_alert(
+            stock_code=args.code,
+            stock_name=stock_name,
+            alert_type=alert_type,
+            target_price=args.price,
+            memo=memo
+        )
+
+        type_text = "이하" if alert_type == "below" else "이상"
+        print(f"✅ 알림 추가 완료")
+        print(f"   {stock_name} ({args.code})")
+        print(f"   {args.price:,}원 {type_text}")
+        if memo:
+            print(f"   메모: {memo}")
+        if price_info:
+            print(f"   현재가: {price_info.current_price:,}원")
+
+    elif args.alert_remove:
+        # 알림 삭제
+        if not args.code:
+            print("❌ --code는 필수입니다.")
+            return
+
+        if manager.remove_alert(args.code, args.price):
+            print(f"✅ {args.code} 알림 삭제 완료")
+        else:
+            print(f"❌ 해당 알림을 찾을 수 없습니다.")
+
+    elif args.alert_clear:
+        # 발동된 알림 정리
+        manager.clear_triggered_alerts()
+        print("✅ 발동된 알림 모두 삭제 완료")
+
+    else:
+        print("사용법:")
+        print("  --mode alert --list                          # 알림 목록")
+        print("  --mode alert --add --code 005930 --price 70000  # 알림 추가 (이하)")
+        print("  --mode alert --add --code 005930 --price 80000 --type above  # 알림 추가 (이상)")
+        print("  --mode alert --add --code 005930 --price 70000 --memo '분할매수'")
+        print("  --mode alert --remove --code 005930           # 종목 알림 전체 삭제")
+        print("  --mode alert --remove --code 005930 --price 70000  # 특정 알림 삭제")
+        print("  --mode alert --clear                          # 발동된 알림 정리")
+
+
 def main():
     parser = argparse.ArgumentParser(description="주식 고수 추적 알림 시스템")
     parser.add_argument(
         "--mode",
-        choices=["once", "scheduler", "summary", "backtest"],
+        choices=["once", "scheduler", "summary", "backtest", "alert"],
         default="once",
-        help="실행 모드 (once: 1회 실행, scheduler: 스케줄러, summary: 요약만, backtest: 백테스트)"
+        help="실행 모드 (once: 1회 실행, scheduler: 스케줄러, summary: 요약만, backtest: 백테스트, alert: 가격알림 관리)"
     )
     parser.add_argument(
         "--dry-run",
@@ -301,9 +387,21 @@ def main():
         help="백테스트 분석 기간 (기본: 90일)"
     )
 
+    # 가격 알림 관련 인자
+    parser.add_argument("--list", dest="alert_list", action="store_true", help="알림 목록 조회")
+    parser.add_argument("--add", dest="alert_add", action="store_true", help="알림 추가")
+    parser.add_argument("--remove", dest="alert_remove", action="store_true", help="알림 삭제")
+    parser.add_argument("--clear", dest="alert_clear", action="store_true", help="발동된 알림 정리")
+    parser.add_argument("--code", type=str, help="종목코드")
+    parser.add_argument("--price", type=int, help="목표가")
+    parser.add_argument("--type", choices=["below", "above"], default="below", help="알림 타입 (below: 이하, above: 이상)")
+    parser.add_argument("--memo", type=str, help="메모")
+
     args = parser.parse_args()
 
-    if args.mode == "backtest":
+    if args.mode == "alert":
+        manage_alerts(args)
+    elif args.mode == "backtest":
         run_backtest(days=args.days, send_slack=not args.dry_run)
     else:
         tracker = StockTracker(dry_run=args.dry_run)

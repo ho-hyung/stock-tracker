@@ -1,0 +1,15 @@
+[Unit]
+Description=Stock Tracker Price Monitor (가격 알림)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/stock-tracker
+ExecStart=/home/ubuntu/stock-tracker/venv/bin/python src/main.py --mode monitor
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

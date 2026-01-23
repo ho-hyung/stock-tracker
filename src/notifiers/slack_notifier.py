@@ -956,7 +956,7 @@ class SlackNotifier:
 
     def send_trading_signals(self, recommendations: list, risk_levels: dict) -> bool:
         """
-        손절/익절 기준이 포함된 매매 시그널 발송
+        매수 시그널 TOP 5 발송 (진입가/손절/익절 포함)
 
         Args:
             recommendations: 추천 종목 리스트
@@ -970,11 +970,11 @@ class SlackNotifier:
         blocks = [
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": "🎯 매매 시그널 (손절/익절 포함)"}
+                "text": {"type": "plain_text", "text": "🚀 매수 시그널 TOP 5"}
             },
             {
                 "type": "context",
-                "elements": [{"type": "mrkdwn", "text": f"🕐 {today} | ATR 기반 동적 기준"}]
+                "elements": [{"type": "mrkdwn", "text": f"🕐 {today} | 외국인+기관 수급 기반 | ATR 동적 기준"}]
             },
             {"type": "divider"},
         ]
@@ -983,7 +983,7 @@ class SlackNotifier:
             risk = risk_levels.get(rec.stock_code)
 
             if risk:
-                # 변동성 이모지
+                # 변동성/신호 강도 이모지
                 vol_emoji = {
                     "낮음": "🟢",
                     "보통": "🟡",
@@ -991,15 +991,29 @@ class SlackNotifier:
                     "매우높음": "🔴"
                 }.get(risk.volatility_grade, "⚪")
 
+                # 점수 기반 신호 강도
+                if rec.score >= 70:
+                    signal_strength = "💪 강력매수"
+                elif rec.score >= 50:
+                    signal_strength = "👍 매수"
+                else:
+                    signal_strength = "👀 관심"
+
+                # 매수 추천가 범위 (현재가 기준 ±1%)
+                entry_low = int(risk.current_price * 0.99)
+                entry_high = int(risk.current_price * 1.01)
+
                 signal_text = (
-                    f"*{i}. {rec.stock_name}* `{rec.stock_code}`\n"
-                    f"현재가 *{risk.current_price:,.0f}원* {vol_emoji} 변동성 {risk.volatility_grade}\n"
+                    f"*{i}. {rec.stock_name}* `{rec.stock_code}` {signal_strength}\n"
+                    f"📊 점수: *{rec.score:.0f}점* | {vol_emoji} 변동성 {risk.volatility_grade}\n"
                     f"```\n"
-                    f"🛑 손절: {risk.stop_loss_price:,.0f}원 (-{risk.stop_loss_pct}%)\n"
-                    f"✅ 1차 익절: {risk.take_profit_1_price:,.0f}원 (+{risk.take_profit_1_pct}%)\n"
-                    f"🎯 2차 익절: {risk.take_profit_2_price:,.0f}원 (+{risk.take_profit_2_pct}%)\n"
-                    f"📊 R/R 비율: 1:{risk.risk_reward_ratio}\n"
+                    f"💰 매수가: {entry_low:,}~{entry_high:,}원 (현재 {risk.current_price:,}원)\n"
+                    f"🛑 손절가: {risk.stop_loss_price:,}원 (-{risk.stop_loss_pct}%)\n"
+                    f"✅ 1차목표: {risk.take_profit_1_price:,}원 (+{risk.take_profit_1_pct}%)\n"
+                    f"🎯 2차목표: {risk.take_profit_2_price:,}원 (+{risk.take_profit_2_pct}%)\n"
+                    f"📈 R/R: 1:{risk.risk_reward_ratio}\n"
                     f"```"
+                    f"_사유: {', '.join(rec.reasons[:2])}_"
                 )
             else:
                 signal_text = (
@@ -1019,8 +1033,8 @@ class SlackNotifier:
             "elements": [{
                 "type": "mrkdwn",
                 "text": (
-                    "_💡 ATR(평균진폭) 기반 동적 손절/익절 | "
-                    "손절 1.5ATR, 1차익절 2ATR, 2차익절 3.5ATR_"
+                    "_💡 손절 1.5ATR | 1차익절 2ATR | 2차익절 3.5ATR | "
+                    "R/R 1:2 이상 권장_"
                 )
             }]
         })
@@ -1029,7 +1043,7 @@ class SlackNotifier:
             "elements": [{"type": "mrkdwn", "text": "_⚠️ 투자 판단의 책임은 본인에게 있습니다_"}]
         })
 
-        return self.send_message("매매 시그널", blocks)
+        return self.send_message("매수 시그널 TOP 5", blocks)
 
     def send_backtest_report(self, summary) -> bool:
         """

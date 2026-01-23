@@ -246,6 +246,58 @@ class StockTracker:
         else:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] 주말이므로 스킵")
 
+    def run_price_monitor(self, interval_seconds: int = 60):
+        """
+        가격 알림 전용 실시간 모니터링
+
+        Args:
+            interval_seconds: 체크 간격 (초, 기본 60초)
+        """
+        print("가격 알림 실시간 모니터링 시작")
+        print("=" * 50)
+        print(f"체크 간격: {interval_seconds}초")
+        print("모니터링 시간: 평일 09:00 ~ 15:30")
+        print("=" * 50)
+        print("Ctrl+C로 종료\n")
+
+        self._init_components()
+
+        while True:
+            now = datetime.now()
+
+            # 평일 장중(09:00~15:30)만 체크
+            is_market_hours = (
+                now.weekday() < 5 and  # 월~금
+                now.hour >= 9 and
+                (now.hour < 15 or (now.hour == 15 and now.minute <= 30))
+            )
+
+            if is_market_hours:
+                active_alerts = self.price_alert_manager.get_active_alerts()
+
+                if active_alerts:
+                    print(f"[{now.strftime('%H:%M:%S')}] {len(active_alerts)}개 알림 체크 중...", end=" ")
+                    triggered = self.price_alert_manager.check_alerts()
+
+                    if triggered:
+                        print(f"⚠️ {len(triggered)}개 발동!")
+                        if self.notifier:
+                            self.notifier.send_price_alert(triggered)
+                            print(f"  → Slack 알림 발송 완료")
+                        for t in triggered:
+                            print(f"  - {t['stock_name']}: {t['current_price']:,}원 (목표: {t['target_price']:,}원)")
+                    else:
+                        print("변동 없음")
+                else:
+                    print(f"[{now.strftime('%H:%M:%S')}] 활성 알림 없음 (대기 중)")
+            else:
+                if now.weekday() >= 5:
+                    print(f"[{now.strftime('%H:%M:%S')}] 주말 - 대기 중")
+                else:
+                    print(f"[{now.strftime('%H:%M:%S')}] 장외 시간 - 대기 중")
+
+            time.sleep(interval_seconds)
+
     def run_scheduler(self):
         """스케줄러 실행 (평일 장중 5회)"""
         print("주식 고수 추적 스케줄러 시작")
@@ -371,9 +423,9 @@ def main():
     parser = argparse.ArgumentParser(description="주식 고수 추적 알림 시스템")
     parser.add_argument(
         "--mode",
-        choices=["once", "scheduler", "summary", "backtest", "alert"],
+        choices=["once", "scheduler", "summary", "backtest", "alert", "monitor"],
         default="once",
-        help="실행 모드 (once: 1회 실행, scheduler: 스케줄러, summary: 요약만, backtest: 백테스트, alert: 가격알림 관리)"
+        help="실행 모드 (once: 1회 실행, scheduler: 스케줄러, summary: 요약만, backtest: 백테스트, alert: 가격알림 관리, monitor: 가격알림 실시간 모니터링)"
     )
     parser.add_argument(
         "--dry-run",
@@ -385,6 +437,12 @@ def main():
         type=int,
         default=90,
         help="백테스트 분석 기간 (기본: 90일)"
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=60,
+        help="가격 모니터링 간격 (초, 기본: 60초)"
     )
 
     # 가격 알림 관련 인자
@@ -403,6 +461,9 @@ def main():
         manage_alerts(args)
     elif args.mode == "backtest":
         run_backtest(days=args.days, send_slack=not args.dry_run)
+    elif args.mode == "monitor":
+        tracker = StockTracker(dry_run=args.dry_run)
+        tracker.run_price_monitor(interval_seconds=args.interval)
     else:
         tracker = StockTracker(dry_run=args.dry_run)
 

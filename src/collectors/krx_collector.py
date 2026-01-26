@@ -92,7 +92,8 @@ class KrxCollector:
                         continue
 
                     price = self._safe_int(cols[2].get_text(strip=True))
-                    change_rate = self._parse_change_rate(cols[3].get_text(strip=True))
+                    # cols[3]은 전일비(상승500), cols[4]가 등락률(+0.33%)
+                    change_rate = self._parse_change_rate(cols[4].get_text(strip=True)) if len(cols) > 4 else 0.0
 
                     results.append({
                         "stock_code": code,

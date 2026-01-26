@@ -299,22 +299,24 @@ class StockTracker:
             time.sleep(interval_seconds)
 
     def run_scheduler(self):
-        """스케줄러 실행 (평일 장중 5회)"""
+        """스케줄러 실행 (평일 장중 6회)"""
         print("주식 고수 추적 스케줄러 시작")
         print("=" * 50)
         print("스케줄 (평일만 실행):")
         print("  09:15 - 장 시작 후 방향성")
         print("  11:30 - 오전장 마무리")
         print("  14:00 - 오후장 동향")
+        print("  15:15 - 장 마감 전 동향")
         print("  15:40 - 장 마감 확정 데이터")
         print("  17:00 - 일일 요약")
         print("=" * 50)
         print("Ctrl+C로 종료\n")
 
-        # 장중 모니터링 (4회) - 평일만
+        # 장중 모니터링 (5회) - 평일만
         schedule.every().day.at("09:15").do(self._run_if_weekday, send_summary=False)
         schedule.every().day.at("11:30").do(self._run_if_weekday, send_summary=False)
         schedule.every().day.at("14:00").do(self._run_if_weekday, send_summary=False)
+        schedule.every().day.at("15:15").do(self._run_if_weekday, send_summary=False)
         schedule.every().day.at("15:40").do(self._run_if_weekday, send_summary=False)
 
         # 일일 요약 (1회) - 평일만

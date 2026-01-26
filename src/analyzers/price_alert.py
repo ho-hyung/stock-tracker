@@ -122,6 +122,46 @@ class PriceAlertManager:
         """전체 알림 목록"""
         return self.alerts
 
+    def get_watchlist_stocks(self) -> list[str]:
+        """
+        관심종목(알림 등록된 종목) 코드 리스트 반환 (중복 제거)
+
+        Returns:
+            종목코드 리스트
+        """
+        return list({alert["stock_code"] for alert in self.alerts})
+
+    def get_watchlist_with_prices(self) -> list[dict]:
+        """
+        관심종목의 현재가 정보 조회
+
+        Returns:
+            [{"stock_code", "stock_name", "current_price", "change_rate", "target_price", "memo"}, ...]
+        """
+        watchlist = []
+        seen_codes = set()
+
+        for alert in self.alerts:
+            code = alert["stock_code"]
+            if code in seen_codes:
+                continue
+            seen_codes.add(code)
+
+            price_info = get_realtime_price(code)
+            if price_info:
+                watchlist.append({
+                    "stock_code": code,
+                    "stock_name": alert["stock_name"],
+                    "current_price": price_info.current_price,
+                    "change_price": price_info.change_price,
+                    "change_rate": price_info.change_rate,
+                    "target_price": alert["target_price"],
+                    "alert_type": alert["alert_type"],
+                    "memo": alert.get("memo", "")
+                })
+
+        return watchlist
+
     def check_alerts(self) -> list[dict]:
         """
         알림 조건 확인 및 발동된 알림 반환

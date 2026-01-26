@@ -126,15 +126,24 @@ class StockTracker:
 
         # 2. 시장 수급 현황 (통합 알림)
         print("\n[2/4] 시장 수급 현황 발송 중...")
+
+        # 관심종목(가격 알림 등록 종목) 현황 수집
+        watchlist_data = self.price_alert_manager.get_watchlist_with_prices()
+        if watchlist_data:
+            print(f"  - 관심종목 {len(watchlist_data)}개 현황 수집 완료")
+
         if self.dry_run:
             print("  [DRY RUN] 실제 발송하지 않음")
+            if watchlist_data:
+                print(f"  - 관심종목: {[d['stock_name'] for d in watchlist_data]}")
             print(f"  - 외국인 TOP 5: {[d['stock_name'] for d in foreigner_data[:5]]}")
             print(f"  - 기관 TOP 5: {[d['stock_name'] for d in institution_data[:5]]}")
             print(f"  - 공시: 대량보유 {len(major_shareholder_data)}건, 임원거래 {len(executive_data)}건")
         elif self.notifier:
             self.notifier.send_market_overview(
                 foreigner_data, institution_data,
-                major_shareholder_data, executive_data
+                major_shareholder_data, executive_data,
+                watchlist_data=watchlist_data
             )
             print("  - 시장 수급 현황 발송 완료 (1개 메시지)")
         else:

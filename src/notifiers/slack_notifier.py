@@ -36,10 +36,14 @@ class SlackNotifier:
         foreigner_data: list,
         institution_data: list,
         major_shareholder_data: list,
-        executive_data: list
+        executive_data: list,
+        watchlist_data: list = None
     ) -> bool:
         """
-        시장 개요 통합 알림 (외국인/기관/공시 한눈에)
+        시장 개요 통합 알림 (외국인/기관/공시/관심종목 한눈에)
+
+        Args:
+            watchlist_data: 관심종목 현황 리스트 (선택)
         """
         today = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -54,6 +58,32 @@ class SlackNotifier:
             },
             {"type": "divider"},
         ]
+
+        # 관심종목 현황 (있으면 최상단에 표시)
+        if watchlist_data:
+            w_text = "*⭐ 관심종목 현황*\n"
+            for item in watchlist_data:
+                change = item["change_rate"]
+                emoji = "📉" if change < 0 else "📈" if change > 0 else "➡️"
+                target = item["target_price"]
+                current = item["current_price"]
+                gap_pct = ((current - target) / target) * 100
+
+                # 목표가 대비 상태
+                if item["alert_type"] == "below":
+                    if current <= target:
+                        status = "🔔 도달!"
+                    else:
+                        status = f"목표까지 {gap_pct:+.1f}%"
+                else:
+                    if current >= target:
+                        status = "🔔 도달!"
+                    else:
+                        status = f"목표까지 {gap_pct:+.1f}%"
+
+                w_text += f"{emoji} *{item['stock_name']}* {current:,}원 ({change:+.2f}%) | {status}\n"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": w_text}})
+            blocks.append({"type": "divider"})
 
         # 외국인 TOP 5 (한 줄로 압축)
         if foreigner_data:

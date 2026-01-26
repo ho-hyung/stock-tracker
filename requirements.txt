@@ -6,4 +6,3 @@ finance-datareader>=0.9.0
 beautifulsoup4>=4.12.0
 setuptools
 google-genai>=1.0.0
-pykrx>=1.0.0

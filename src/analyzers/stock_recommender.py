@@ -2,102 +2,13 @@
 주식 매수/매도 추천 시스템
 - 규칙 기반 추천
 - 점수 기반 랭킹
-- AI(Gemini) 분석 연동
 """
 
 import os
 import sys
-import json
-from datetime import datetime
-from typing import Optional
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from config import GEMINI_API_KEY, GEMINI_FREE_TIER
-
-# 데이터 저장 경로
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
-
-
-class GeminiUsageTracker:
-    """Gemini API 사용량 추적"""
-
-    def __init__(self):
-        self.usage_file = os.path.join(DATA_DIR, "gemini_usage.json")
-        self.daily_limit = GEMINI_FREE_TIER.get("daily_requests", 1500)
-        self.warning_threshold = GEMINI_FREE_TIER.get("warning_threshold", 0.8)
-        self._ensure_data_dir()
-        self.usage = self._load_usage()
-
-    def _ensure_data_dir(self):
-        """데이터 디렉토리 생성"""
-        os.makedirs(DATA_DIR, exist_ok=True)
-
-    def _load_usage(self) -> dict:
-        """사용량 데이터 로드"""
-        if os.path.exists(self.usage_file):
-            try:
-                with open(self.usage_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except:
-                return {"date": "", "count": 0, "warning_sent": False}
-        return {"date": "", "count": 0, "warning_sent": False}
-
-    def _save_usage(self):
-        """사용량 데이터 저장"""
-        with open(self.usage_file, "w", encoding="utf-8") as f:
-            json.dump(self.usage, f, ensure_ascii=False, indent=2)
-
-    def _reset_if_new_day(self):
-        """날짜가 바뀌면 카운트 리셋"""
-        today = datetime.now().strftime("%Y-%m-%d")
-        if self.usage.get("date") != today:
-            self.usage = {"date": today, "count": 0, "warning_sent": False}
-            self._save_usage()
-
-    def increment(self) -> dict:
-        """
-        API 호출 카운트 증가
-
-        Returns:
-            dict: {
-                "count": 현재 사용량,
-                "limit": 일일 한도,
-                "usage_pct": 사용률 (%),
-                "should_warn": 경고 필요 여부 (80% 도달 시 True, 한번만)
-            }
-        """
-        self._reset_if_new_day()
-        self.usage["count"] += 1
-
-        usage_pct = (self.usage["count"] / self.daily_limit) * 100
-        should_warn = False
-
-        # 80% 도달 시 경고 (한 번만)
-        if usage_pct >= self.warning_threshold * 100 and not self.usage.get("warning_sent"):
-            should_warn = True
-            self.usage["warning_sent"] = True
-
-        self._save_usage()
-
-        return {
-            "count": self.usage["count"],
-            "limit": self.daily_limit,
-            "usage_pct": round(usage_pct, 1),
-            "should_warn": should_warn
-        }
-
-    def get_status(self) -> dict:
-        """현재 사용량 상태 조회"""
-        self._reset_if_new_day()
-        usage_pct = (self.usage["count"] / self.daily_limit) * 100
-        return {
-            "date": self.usage.get("date"),
-            "count": self.usage["count"],
-            "limit": self.daily_limit,
-            "usage_pct": round(usage_pct, 1),
-            "remaining": self.daily_limit - self.usage["count"]
-        }
 
 
 @dataclass
@@ -115,9 +26,7 @@ class StockRecommender:
     """주식 추천 시스템"""
 
     def __init__(self):
-        self.gemini_api_key = GEMINI_API_KEY
-        self.usage_tracker = GeminiUsageTracker()
-        self.last_usage_info = None  # 마지막 API 호출 결과
+        pass
 
     def get_rule_based_recommendations(
         self,
@@ -312,99 +221,6 @@ class StockRecommender:
         recommendations.sort(key=lambda x: x.score, reverse=True)
         return recommendations[:top_n]
 
-    def get_ai_recommendations(
-        self,
-        foreigner_data: list,
-        institution_data: list,
-        major_shareholder_data: list,
-        executive_data: list,
-        top_n: int = 5
-    ) -> Optional[str]:
-        """
-        Gemini AI 분석 기반 추천
-        """
-        if not self.gemini_api_key:
-            return None
-
-        try:
-            from google import genai
-
-            client = genai.Client(api_key=self.gemini_api_key)
-
-            # 데이터 요약 준비
-            foreigner_summary = []
-            for item in foreigner_data[:10]:
-                amount = item['net_buy_amount'] / 100_000_000
-                foreigner_summary.append(f"- {item['stock_name']}: {amount:,.0f}억원")
-
-            institution_summary = []
-            for item in institution_data[:10]:
-                amount = item['net_buy_amount'] / 100_000_000
-                institution_summary.append(f"- {item['stock_name']}: {amount:,.0f}억원")
-
-            disclosure_summary = []
-            for item in major_shareholder_data[:5]:
-                disclosure_summary.append(f"- {item['corp_name']}: {item.get('flr_nm', '-')}")
-
-            executive_summary = []
-            for item in executive_data[:5]:
-                executive_summary.append(f"- {item['corp_name']}: {item.get('flr_nm', '-')}")
-
-            prompt = f"""당신은 한국 주식 시장 전문 애널리스트입니다.
-아래 오늘의 시장 데이터를 분석하여 매수 추천 종목 TOP {top_n}를 선정해주세요.
-
-## 오늘의 데이터
-
-### 외국인 순매수 TOP 10
-{chr(10).join(foreigner_summary) if foreigner_summary else "데이터 없음"}
-
-### 기관 순매수 TOP 10
-{chr(10).join(institution_summary) if institution_summary else "데이터 없음"}
-
-### 대량보유 공시 (5% 이상 지분)
-{chr(10).join(disclosure_summary) if disclosure_summary else "데이터 없음"}
-
-### 임원/주요주주 거래 공시
-{chr(10).join(executive_summary) if executive_summary else "데이터 없음"}
-
-## 분석 요청
-
-위 데이터를 종합 분석하여 매수 추천 종목 TOP {top_n}를 아래 표 형식으로 작성해주세요.
-추천 이유와 리스크는 각각 15자 이내로 핵심만 간결하게 작성하세요.
-
-## 응답 형식 (반드시 이 형식을 따라주세요):
-
-| 순위 | 종목명 | 추천이유 | 리스크 |
-|:---:|:---:|:---|:---|
-| 1 | OO전자 | 외국인+기관 동시매수 | 고점 부담 |
-| 2 | OO화학 | 실적 호조 전망 | 원자재 변동 |
-
-⚠️ 주의: 위 분석은 참고용이며 투자 판단은 본인 책임입니다.
-"""
-
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt
-            )
-
-            # 사용량 추적
-            self.last_usage_info = self.usage_tracker.increment()
-
-            return response.text
-
-        except ImportError:
-            return "Gemini API 사용을 위해 google-genai 패키지를 설치해주세요: pip install google-genai"
-        except Exception as e:
-            return f"AI 분석 중 오류 발생: {str(e)}"
-
-    def get_usage_status(self) -> dict:
-        """Gemini API 사용량 상태 조회"""
-        return self.usage_tracker.get_status()
-
-    def should_send_usage_warning(self) -> bool:
-        """사용량 경고를 보내야 하는지 확인"""
-        return self.last_usage_info and self.last_usage_info.get("should_warn", False)
-
     def get_all_recommendations(
         self,
         foreigner_data: list,
@@ -420,10 +236,6 @@ class StockRecommender:
                 major_shareholder_data, executive_data, top_n
             ),
             "score_based": self.get_score_based_recommendations(
-                foreigner_data, institution_data,
-                major_shareholder_data, executive_data, top_n
-            ),
-            "ai_analysis": self.get_ai_recommendations(
                 foreigner_data, institution_data,
                 major_shareholder_data, executive_data, top_n
             )

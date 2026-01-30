@@ -149,9 +149,9 @@ class StockTracker:
         else:
             print("  [SKIP] Slack 알림기 미설정")
 
-        # 3. AI 추천 종목 (통합 알림)
+        # 3. 추천 종목 (통합 알림)
         if send_recommendations:
-            print("\n[3/4] AI 추천 종목 발송 중...")
+            print("\n[3/4] 추천 종목 발송 중...")
 
             # 추천 데이터 생성
             rule_based = self.recommender.get_rule_based_recommendations(
@@ -162,29 +162,15 @@ class StockTracker:
                 foreigner_data, institution_data,
                 major_shareholder_data, executive_data, top_n=5
             )
-            ai_analysis = self.recommender.get_ai_recommendations(
-                foreigner_data, institution_data,
-                major_shareholder_data, executive_data, top_n=5
-            )
 
             if self.dry_run:
                 print("  [DRY RUN] 추천 데이터:")
                 print(f"  - 수급 일치: {[r.stock_name for r in rule_based[:3]]}")
                 print(f"  - 종합점수 TOP: {[r.stock_name for r in score_based[:3]]}")
-                print(f"  - AI 분석: {'있음' if ai_analysis else 'GEMINI_API_KEY 필요'}")
-                # 사용량 상태 출력
-                usage = self.recommender.get_usage_status()
-                print(f"  - Gemini 사용량: {usage['count']}/{usage['limit']} ({usage['usage_pct']}%)")
             elif self.notifier:
                 # 통합 추천 알림 발송
-                self.notifier.send_unified_recommendations(rule_based, score_based, ai_analysis)
-                print("  - AI 추천 종목 발송 완료 (1개 메시지)")
-
-                # Gemini 사용량 80% 도달 시 경고 발송
-                if self.recommender.should_send_usage_warning():
-                    usage = self.recommender.last_usage_info
-                    self.notifier.send_gemini_usage_warning(usage)
-                    print(f"  - ⚠️ Gemini 사용량 경고 발송 ({usage['usage_pct']}% 도달)")
+                self.notifier.send_unified_recommendations(rule_based, score_based)
+                print("  - 추천 종목 발송 완료 (1개 메시지)")
 
                 # 손절/익절 기준 계산 및 발송
                 top_recommendations = (rule_based + score_based)[:5]

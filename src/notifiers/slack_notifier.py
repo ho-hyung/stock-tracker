@@ -120,18 +120,17 @@ class SlackNotifier:
     def send_unified_recommendations(
         self,
         rule_based: list,
-        score_based: list,
-        ai_analysis: str = None
+        score_based: list
     ) -> bool:
         """
-        추천 종목 통합 알림 (3가지 추천을 하나로)
+        추천 종목 통합 알림 (수급 기반 추천)
         """
         today = datetime.now().strftime("%Y-%m-%d")
 
         blocks = [
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": "💡 AI 추천 종목"}
+                "text": {"type": "plain_text", "text": "💡 추천 종목"}
             },
             {
                 "type": "context",
@@ -157,35 +156,12 @@ class SlackNotifier:
                 s_text += f"`{i}` *{rec.stock_name}* {bar} *{rec.score:.0f}점*\n"
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": s_text}})
 
-        # AI 분석 (Slack 블록 제한: 3000자)
-        if ai_analysis:
-            blocks.append({"type": "divider"})
-            max_length = 2900  # Slack 블록 텍스트 제한
-
-            if len(ai_analysis) <= max_length:
-                blocks.append({
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"*🤖 AI 분석*\n{ai_analysis}"}
-                })
-            else:
-                # 긴 텍스트를 여러 블록으로 분할
-                blocks.append({
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": "*🤖 AI 분석*"}
-                })
-                chunks = [ai_analysis[i:i+max_length] for i in range(0, len(ai_analysis), max_length)]
-                for chunk in chunks[:3]:  # 최대 3개 블록
-                    blocks.append({
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": chunk}
-                    })
-
         blocks.append({
             "type": "context",
             "elements": [{"type": "mrkdwn", "text": "_⚠️ 투자 판단의 책임은 본인에게 있습니다_"}]
         })
 
-        return self.send_message("AI 추천 종목", blocks)
+        return self.send_message("추천 종목", blocks)
 
     def send_analysis_insights(
         self,
@@ -581,57 +557,6 @@ class SlackNotifier:
             })
 
         return self.send_message("점수 기반 추천", blocks)
-
-    def send_ai_recommendations(self, ai_analysis: str) -> bool:
-        """AI 분석 추천 발송"""
-        if not ai_analysis:
-            return True
-
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        # AI 응답이 너무 길면 분할
-        max_length = 2900  # Slack 블록 텍스트 제한
-
-        blocks = [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "3. AI 분석 추천 (Gemini)",
-                }
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {"type": "mrkdwn", "text": f"📅 {today} | AI 종합 분석"}
-                ]
-            },
-            {"type": "divider"},
-        ]
-
-        # 텍스트 분할
-        if len(ai_analysis) <= max_length:
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": ai_analysis}
-            })
-        else:
-            # 긴 텍스트를 여러 블록으로 분할
-            chunks = [ai_analysis[i:i+max_length] for i in range(0, len(ai_analysis), max_length)]
-            for chunk in chunks[:5]:  # 최대 5개 블록
-                blocks.append({
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": chunk}
-                })
-
-        blocks.append({
-            "type": "context",
-            "elements": [
-                {"type": "mrkdwn", "text": "_⚠️ AI 분석은 참고용이며 투자 판단의 책임은 본인에게 있습니다._"}
-            ]
-        })
-
-        return self.send_message("AI 분석 추천", blocks)
 
     def send_consecutive_buy_alert(self, consecutive_data: dict) -> bool:
         """연속 매수 종목 알림 발송"""
@@ -1175,43 +1100,6 @@ class SlackNotifier:
 
         return self.send_message("백테스트 결과 리포트", blocks)
 
-    def send_gemini_usage_warning(self, usage_info: dict) -> bool:
-        """
-        Gemini API 사용량 80% 경고 알림
-
-        Args:
-            usage_info: {
-                "count": 현재 사용량,
-                "limit": 일일 한도,
-                "usage_pct": 사용률 (%)
-            }
-        """
-        blocks = [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "⚠️ Gemini API 사용량 경고"}
-            },
-            {"type": "divider"},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*일일 무료 한도의 {usage_info['usage_pct']:.0f}%에 도달했습니다*\n\n"
-                           f"• 현재 사용량: *{usage_info['count']:,}회*\n"
-                           f"• 일일 한도: *{usage_info['limit']:,}회*\n"
-                           f"• 남은 횟수: *{usage_info['limit'] - usage_info['count']:,}회*"
-                }
-            },
-            {"type": "divider"},
-            {
-                "type": "context",
-                "elements": [
-                    {"type": "mrkdwn", "text": "_한도 초과 시 AI 분석 기능이 일시 중단됩니다. 내일 자정에 리셋됩니다._"}
-                ]
-            }
-        ]
-
-        return self.send_message("Gemini API 사용량 경고", blocks)
 
 
 if __name__ == "__main__":
